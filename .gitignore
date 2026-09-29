@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+
+findly.db
+
+clip_images.pt
+clip_images_new.pt
+
+test findly/
