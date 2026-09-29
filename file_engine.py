@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timedelta
 
 
-def search_files(text):
+def search_files(text, folders=None):
 
     conn = sqlite3.connect("findly.db")
     cursor = conn.cursor()
@@ -13,16 +13,35 @@ def search_files(text):
     types = []
 
     if "photo" in text or "image" in text:
-        types = [".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff"]
+        types = [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".tif",
+            ".tiff"
+        ]
 
     elif "video" in text:
-        types = [".mp4", ".mkv", ".avi", ".mov"]
+        types = [
+            ".mp4",
+            ".mkv",
+            ".avi",
+            ".mov"
+        ]
 
     elif "document" in text or "pdf" in text:
-        types = [".pdf", ".docx", ".doc", ".txt"]
+        types = [
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".txt"
+        ]
 
     elif "python" in text:
-        types = [".py"]
+        types = [
+            ".py"
+        ]
 
     months = {
         "january": 1,
@@ -54,7 +73,9 @@ def search_files(text):
 
     if types:
 
-        placeholders = ",".join(["?"] * len(types))
+        placeholders = ",".join(
+            ["?"] * len(types)
+        )
 
         conditions.append(
             "extension IN (" + placeholders + ")"
@@ -66,15 +87,15 @@ def search_files(text):
 
         today = datetime.now().date()
 
-        tomorrow = today + timedelta(days=1)
-
-        conditions.append("""
-        (
-            date(created) = ?
-            OR date(modified) = ?
-            OR date(substr(taken,1,10)) = ?
+        conditions.append(
+            """
+            (
+                date(created) = ?
+                OR date(modified) = ?
+                OR date(substr(taken,1,10)) = ?
+            )
+            """
         )
-        """)
 
         values.extend([
             today.isoformat(),
@@ -84,15 +105,20 @@ def search_files(text):
 
     elif "yesterday" in text:
 
-        yesterday = datetime.now().date() - timedelta(days=1)
-
-        conditions.append("""
-        (
-            date(created) = ?
-            OR date(modified) = ?
-            OR date(substr(taken,1,10)) = ?
+        yesterday = (
+            datetime.now().date()
+            - timedelta(days=1)
         )
-        """)
+
+        conditions.append(
+            """
+            (
+                date(created) = ?
+                OR date(modified) = ?
+                OR date(substr(taken,1,10)) = ?
+            )
+            """
+        )
 
         values.extend([
             yesterday.isoformat(),
@@ -104,26 +130,31 @@ def search_files(text):
 
         today = datetime.now().date()
 
-        start = today - timedelta(days=today.weekday() + 7)
+        start = (
+            today
+            - timedelta(days=today.weekday() + 7)
+        )
 
         end = start + timedelta(days=7)
 
-        conditions.append("""
-        (
-            date(created) >= ?
-            AND date(created) < ?
+        conditions.append(
+            """
+            (
+                date(created) >= ?
+                AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ?
+                AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
         )
-        OR
-        (
-            date(modified) >= ?
-            AND date(modified) < ?
-        )
-        OR
-        (
-            date(substr(taken,1,10)) >= ?
-            AND date(substr(taken,1,10)) < ?
-        )
-        """)
 
         values.extend([
             start.isoformat(),
@@ -140,28 +171,33 @@ def search_files(text):
 
         first_this_month = today.replace(day=1)
 
-        last_month = first_this_month - timedelta(days=1)
+        last_month = (
+            first_this_month
+            - timedelta(days=1)
+        )
 
         start = last_month.replace(day=1)
 
         end = first_this_month
 
-        conditions.append("""
-        (
-            date(created) >= ?
-            AND date(created) < ?
+        conditions.append(
+            """
+            (
+                date(created) >= ?
+                AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ?
+                AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
         )
-        OR
-        (
-            date(modified) >= ?
-            AND date(modified) < ?
-        )
-        OR
-        (
-            date(substr(taken,1,10)) >= ?
-            AND date(substr(taken,1,10)) < ?
-        )
-        """)
 
         values.extend([
             start.isoformat(),
@@ -177,25 +213,26 @@ def search_files(text):
         year = datetime.now().year
 
         start = f"{year}-01-01"
-
         end = f"{year + 1}-01-01"
 
-        conditions.append("""
-        (
-            date(created) >= ?
-            AND date(created) < ?
+        conditions.append(
+            """
+            (
+                date(created) >= ?
+                AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ?
+                AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
         )
-        OR
-        (
-            date(modified) >= ?
-            AND date(modified) < ?
-        )
-        OR
-        (
-            date(substr(taken,1,10)) >= ?
-            AND date(substr(taken,1,10)) < ?
-        )
-        """)
 
         values.extend([
             start,
@@ -223,7 +260,9 @@ def search_files(text):
 
     if month_number and year_match:
 
-        year = int(year_match.group(1))
+        year = int(
+            year_match.group(1)
+        )
 
         start = datetime(
             year,
@@ -247,22 +286,24 @@ def search_files(text):
                 1
             )
 
-        conditions.append("""
-        (
-            date(created) >= ?
-            AND date(created) < ?
+        conditions.append(
+            """
+            (
+                date(created) >= ?
+                AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ?
+                AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
         )
-        OR
-        (
-            date(modified) >= ?
-            AND date(modified) < ?
-        )
-        OR
-        (
-            date(substr(taken,1,10)) >= ?
-            AND date(substr(taken,1,10)) < ?
-        )
-        """)
 
         values.extend([
             start.strftime("%Y-%m-%d"),
@@ -275,28 +316,31 @@ def search_files(text):
 
     elif year_match and not month_number:
 
-        year = int(year_match.group(1))
+        year = int(
+            year_match.group(1)
+        )
 
         start = f"{year}-01-01"
-
         end = f"{year + 1}-01-01"
 
-        conditions.append("""
-        (
-            date(created) >= ?
-            AND date(created) < ?
+        conditions.append(
+            """
+            (
+                date(created) >= ?
+                AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ?
+                AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
         )
-        OR
-        (
-            date(modified) >= ?
-            AND date(modified) < ?
-        )
-        OR
-        (
-            date(substr(taken,1,10)) >= ?
-            AND date(substr(taken,1,10)) < ?
-        )
-        """)
 
         values.extend([
             start,
@@ -319,17 +363,21 @@ def search_files(text):
 
         day_number = weekdays[day_name]
 
-        sqlite_day = (day_number + 1) % 7
+        sqlite_day = (
+            day_number + 1
+        ) % 7
 
-        conditions.append("""
-        (
-            CAST(strftime('%w', created) AS INTEGER) = ?
-            OR
-            CAST(strftime('%w', modified) AS INTEGER) = ?
-            OR
-            CAST(strftime('%w', substr(taken,1,10)) AS INTEGER) = ?
+        conditions.append(
+            """
+            (
+                CAST(strftime('%w', created) AS INTEGER) = ?
+                OR
+                CAST(strftime('%w', modified) AS INTEGER) = ?
+                OR
+                CAST(strftime('%w', substr(taken,1,10)) AS INTEGER) = ?
+            )
+            """
         )
-        """)
 
         values.extend([
             sqlite_day,
@@ -350,7 +398,8 @@ def search_files(text):
             if "this " + day_name in text:
 
                 difference = (
-                    day_number - today.weekday()
+                    day_number
+                    - today.weekday()
                 ) % 7
 
                 target = today + timedelta(
@@ -360,7 +409,8 @@ def search_files(text):
             else:
 
                 difference = (
-                    today.weekday() - day_number
+                    today.weekday()
+                    - day_number
                 ) % 7
 
                 if difference == 0:
@@ -370,13 +420,15 @@ def search_files(text):
                     days=difference
                 )
 
-            conditions.append("""
-            (
-                date(created) = ?
-                OR date(modified) = ?
-                OR date(substr(taken,1,10)) = ?
+            conditions.append(
+                """
+                (
+                    date(created) = ?
+                    OR date(modified) = ?
+                    OR date(substr(taken,1,10)) = ?
+                )
+                """
             )
-            """)
 
             values.extend([
                 target.isoformat(),
@@ -403,9 +455,11 @@ def search_files(text):
 
     range_match = re.search(
         r"(?:between|from)\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)\s+"
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)\s+"
         r"(?:and|to)\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -433,7 +487,8 @@ def search_files(text):
     greater_match = re.search(
         r"(bigger|larger|greater|more)\s+"
         r"than\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -444,13 +499,16 @@ def search_files(text):
             greater_match.group(3)
         )
 
-        conditions.append("size > ?")
+        conditions.append(
+            "size > ?"
+        )
 
         values.append(size)
 
     over_match = re.search(
         r"\bover\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -461,14 +519,17 @@ def search_files(text):
             over_match.group(2)
         )
 
-        conditions.append("size > ?")
+        conditions.append(
+            "size > ?"
+        )
 
         values.append(size)
 
     smaller_match = re.search(
         r"(smaller|less)\s+"
         r"than\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -479,13 +540,16 @@ def search_files(text):
             smaller_match.group(3)
         )
 
-        conditions.append("size < ?")
+        conditions.append(
+            "size < ?"
+        )
 
         values.append(size)
 
     under_match = re.search(
         r"\bunder\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -496,13 +560,16 @@ def search_files(text):
             under_match.group(2)
         )
 
-        conditions.append("size < ?")
+        conditions.append(
+            "size < ?"
+        )
 
         values.append(size)
 
     at_least_match = re.search(
         r"at\s+least\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -513,13 +580,16 @@ def search_files(text):
             at_least_match.group(2)
         )
 
-        conditions.append("size >= ?")
+        conditions.append(
+            "size >= ?"
+        )
 
         values.append(size)
 
     at_most_match = re.search(
         r"at\s+most\s+"
-        r"(\d+(?:\.\d+)?)\s*(gb|mb|kb)",
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(gb|mb|kb)",
         text
     )
 
@@ -530,7 +600,9 @@ def search_files(text):
             at_most_match.group(2)
         )
 
-        conditions.append("size <= ?")
+        conditions.append(
+            "size <= ?"
+        )
 
         values.append(size)
 
@@ -540,7 +612,9 @@ def search_files(text):
         and not over_match
     ):
 
-        conditions.append("size > ?")
+        conditions.append(
+            "size > ?"
+        )
 
         values.append(100)
 
@@ -550,13 +624,18 @@ def search_files(text):
         and not under_match
     ):
 
-        conditions.append("size < ?")
+        conditions.append(
+            "size < ?"
+        )
 
         values.append(10)
 
     order = ""
 
-    if "biggest" in text or "largest" in text:
+    if (
+        "biggest" in text
+        or "largest" in text
+    ):
 
         order = " ORDER BY size DESC"
 
@@ -565,7 +644,14 @@ def search_files(text):
         order = " ORDER BY size ASC"
 
     query = """
-    SELECT name, extension, size, path, created, modified, taken
+    SELECT
+        name,
+        extension,
+        size,
+        path,
+        created,
+        modified,
+        taken
     FROM files
     """
 
@@ -577,6 +663,35 @@ def search_files(text):
             "(" + condition + ")"
             for condition in conditions
         )
+
+    if folders:
+
+        folder_conditions = []
+
+        for folder in folders:
+
+            folder_conditions.append(
+                "path LIKE ?"
+            )
+
+            values.append(
+                folder.rstrip("\\/")
+                + "\\%"
+            )
+
+        folder_condition = (
+            "("
+            + " OR ".join(folder_conditions)
+            + ")"
+        )
+
+        if conditions:
+
+            query += " AND " + folder_condition
+
+        else:
+
+            query += " WHERE " + folder_condition
 
     query += order
 
@@ -590,3 +705,11 @@ def search_files(text):
     conn.close()
 
     return results
+
+
+def search_files_in_folders(query, folders):
+
+    return search_files(
+        query,
+        folders
+    )

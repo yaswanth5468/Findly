@@ -2,8 +2,9 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 
+from scanner import scan_folder
 from image_engine import search_images
-from file_engine import search_files
+from file_engine import search_files_in_folders
 from combined_engine import search_combined
 from document_engine import search_documents
 
@@ -12,11 +13,27 @@ selected_folders = []
 
 
 def add_folder():
+
     folder = filedialog.askdirectory()
 
     if folder:
-        selected_folders.append(folder)
-        print("Added folder:", folder)
+
+        if folder not in selected_folders:
+
+            selected_folders.append(folder)
+
+            scan_folder(folder)
+
+            print("Added folder:", folder)
+            print("Folder scanned successfully.")
+            print(
+                "Selected folders:",
+                selected_folders
+            )
+
+        else:
+
+            print("Folder already added.")
 
 
 ai_words = [
@@ -35,13 +52,17 @@ ai_words = [
 
 
 def is_combined_search(query):
+
     query = query.lower()
 
     has_visual = False
 
     for word in ai_words:
+
         if word in query:
+
             has_visual = True
+
             break
 
     has_photo = (
@@ -61,10 +82,15 @@ def is_combined_search(query):
         or "2026" in query
     )
 
-    return has_visual and has_photo and has_filter
+    return (
+        has_visual
+        and has_photo
+        and has_filter
+    )
 
 
 def is_ai_search(query):
+
     query = query.lower()
 
     if (
@@ -72,16 +98,20 @@ def is_ai_search(query):
         or "picture" in query
         or "image" in query
     ):
+
         return True
 
     for word in ai_words:
+
         if word in query:
+
             return True
 
     return False
 
 
 def is_document_search(query):
+
     query = query.lower()
 
     document_words = [
@@ -95,35 +125,47 @@ def is_document_search(query):
     ]
 
     for word in document_words:
+
         if word in query:
+
             return True
 
     return False
 
 
 def clear_results():
+
     for widget in result_frame.winfo_children():
+
         widget.destroy()
 
 
 def open_file(path):
+
     try:
+
         os.startfile(path)
+
     except:
+
         pass
 
 
 def show_image_results(results):
+
     search_type_label.config(
         text="Search type: AI Photo Search"
     )
 
     if not results:
+
         tk.Label(
             result_frame,
             text="No strong matches found",
             font=("Arial", 12)
-        ).pack(pady=20)
+        ).pack(
+            pady=20
+        )
 
         return
 
@@ -149,31 +191,43 @@ def show_image_results(results):
             frame,
             text=name,
             font=("Arial", 11, "bold")
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
-            text="Match: " + str(round(score, 4))
-        ).pack(anchor="w")
+            text="Match: " + str(
+                round(score, 4)
+            )
+        ).pack(
+            anchor="w"
+        )
 
         tk.Button(
             frame,
             text="OPEN",
             command=lambda p=path: open_file(p)
-        ).pack(anchor="e")
+        ).pack(
+            anchor="e"
+        )
 
 
 def show_combined_results(results):
+
     search_type_label.config(
         text="Search type: Combined AI + File Search"
     )
 
     if not results:
+
         tk.Label(
             result_frame,
             text="No matching files found",
             font=("Arial", 12)
-        ).pack(pady=20)
+        ).pack(
+            pady=20
+        )
 
         return
 
@@ -203,47 +257,66 @@ def show_combined_results(results):
             frame,
             text=name,
             font=("Arial", 11, "bold")
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Type: " + extension
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
-            text="Size: " + str(round(size, 2)) + " MB"
-        ).pack(anchor="w")
+            text="Size: "
+            + str(round(size, 2))
+            + " MB"
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
-            text="Match: " + str(round(score, 4))
-        ).pack(anchor="w")
+            text="Match: "
+            + str(round(score, 4))
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text=path,
             wraplength=700
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Button(
             frame,
             text="OPEN",
             command=lambda p=path: open_file(p)
-        ).pack(anchor="e")
+        ).pack(
+            anchor="e"
+        )
 
 
 def show_file_results(results):
+
     search_type_label.config(
         text="Search type: File Search"
     )
 
     if not results:
+
         tk.Label(
             result_frame,
             text="No files found",
             font=("Arial", 12)
-        ).pack(pady=20)
+        ).pack(
+            pady=20
+        )
 
         return
 
@@ -275,58 +348,81 @@ def show_file_results(results):
             frame,
             text=name,
             font=("Arial", 11, "bold")
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Type: " + extension
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
-            text="Size: " + str(round(size, 2)) + " MB"
-        ).pack(anchor="w")
+            text="Size: "
+            + str(round(size, 2))
+            + " MB"
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Location: " + path,
             wraplength=700
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Created: " + str(created)
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Modified: " + str(modified)
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         if taken:
+
             tk.Label(
                 frame,
                 text="Taken: " + str(taken)
-            ).pack(anchor="w")
+            ).pack(
+                anchor="w"
+            )
 
         tk.Button(
             frame,
             text="OPEN",
             command=lambda p=path: open_file(p)
-        ).pack(anchor="e")
+        ).pack(
+            anchor="e"
+        )
 
 
 def show_document_results(results):
+
     search_type_label.config(
         text="Search type: Document Content Search"
     )
 
     if not results:
+
         tk.Label(
             result_frame,
             text="No matching documents found",
             font=("Arial", 12)
-        ).pack(pady=20)
+        ).pack(
+            pady=20
+        )
 
         return
 
@@ -355,48 +451,73 @@ def show_document_results(results):
             frame,
             text=os.path.basename(path),
             font=("Arial", 11, "bold")
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Label(
             frame,
             text="Type: " + file_type
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         if location:
+
             if file_type == "PDF":
-                location_text = "Page: " + str(location)
+
+                location_text = (
+                    "Page: "
+                    + str(location)
+                )
+
             else:
-                location_text = "Paragraph: " + str(location)
+
+                location_text = (
+                    "Paragraph: "
+                    + str(location)
+                )
 
             tk.Label(
                 frame,
                 text=location_text
-            ).pack(anchor="w")
+            ).pack(
+                anchor="w"
+            )
 
         tk.Label(
             frame,
             text="Match:",
             font=("Arial", 10, "bold")
-        ).pack(anchor="w", pady=(8, 0))
+        ).pack(
+            anchor="w",
+            pady=(8, 0)
+        )
 
         tk.Label(
             frame,
             text=snippet,
             wraplength=750,
             justify="left"
-        ).pack(anchor="w")
+        ).pack(
+            anchor="w"
+        )
 
         tk.Button(
             frame,
             text="OPEN",
             command=lambda p=path: open_file(p)
-        ).pack(anchor="e")
+        ).pack(
+            anchor="e"
+        )
 
 
 def search():
+
     query = search_entry.get().strip()
 
     if not query:
+
         return
 
     clear_results()
@@ -405,37 +526,76 @@ def search():
         text=""
     )
 
+    if not selected_folders:
+
+        tk.Label(
+            result_frame,
+            text="Please add a folder first.",
+            font=("Arial", 12)
+        ).pack(
+            pady=20
+        )
+
+        result_count_label.config(
+            text="Results found: 0"
+        )
+
+        return
+
     if is_combined_search(query):
 
-        results = search_combined(query)
+        results = search_combined(
+            query
+        )
 
-        show_combined_results(results)
+        show_combined_results(
+            results
+        )
 
     elif is_document_search(query):
 
-        folder = os.path.expanduser("~")
+        results = []
 
-        results = search_documents(
-            query,
-            folder
+        for folder in selected_folders:
+
+            folder_results = search_documents(
+                query,
+                folder
+            )
+
+            results.extend(
+                folder_results
+            )
+
+        show_document_results(
+            results
         )
-
-        show_document_results(results)
 
     elif is_ai_search(query):
 
-        results = search_images(query)
+        results = search_images(
+            query,
+            selected_folders
+        )
 
-        show_image_results(results)
+        show_image_results(
+            results
+        )
 
     else:
 
-        results = search_files(query)
+        results = search_files_in_folders(
+            query,
+            selected_folders
+        )
 
-        show_file_results(results)
+        show_file_results(
+            results
+        )
 
     result_count_label.config(
-        text="Results found: " + str(len(results))
+        text="Results found: "
+        + str(len(results))
     )
 
 
@@ -443,7 +603,9 @@ root = tk.Tk()
 
 root.title("Findly")
 
-root.geometry("850x700")
+root.geometry(
+    "850x700"
+)
 
 
 title = tk.Label(
@@ -452,10 +614,14 @@ title = tk.Label(
     font=("Arial", 24, "bold")
 )
 
-title.pack(pady=15)
+title.pack(
+    pady=15
+)
 
 
-search_frame = tk.Frame(root)
+search_frame = tk.Frame(
+    root
+)
 
 search_frame.pack(
     fill="x",
@@ -528,7 +694,9 @@ result_count_label.pack(
 )
 
 
-result_container = tk.Frame(root)
+result_container = tk.Frame(
+    root
+)
 
 result_container.pack(
     fill="both",

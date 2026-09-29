@@ -8,6 +8,7 @@ from query_parser import parse_query
 def get_file_date(path):
 
     try:
+
         created = datetime.fromtimestamp(
             os.path.getctime(path)
         )
@@ -18,12 +19,12 @@ def get_file_date(path):
 
         return created, modified
 
-    except Exception:
+    except:
 
         return None, None
 
 
-def search_combined(query):
+def search_combined(query, folders=None):
 
     details = parse_query(query)
 
@@ -37,16 +38,22 @@ def search_combined(query):
 
         return []
 
-    image_results = search_images(visual_query)
+    image_results = search_images(
+        visual_query,
+        folders
+    )
 
     results = []
 
     for path, score in image_results:
 
         if not os.path.exists(path):
+
             continue
 
-        extension = os.path.splitext(path)[1].lower()
+        extension = os.path.splitext(
+            path
+        )[1].lower()
 
         if file_type == "photo":
 
@@ -61,11 +68,16 @@ def search_combined(query):
 
                 continue
 
-        size = os.path.getsize(path) / (1024 * 1024)
+        size = (
+            os.path.getsize(path)
+            / (1024 * 1024)
+        )
 
         if year:
 
-            created, modified = get_file_date(path)
+            created, modified = get_file_date(
+                path
+            )
 
             found_year = False
 
