@@ -1,10 +1,87 @@
+# ==========================================
+
+# FINDLY - Python / AI File Search Project
+
+# ==========================================
+
+# Python cache
+
+**pycache**/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+
 .venv/
-__pycache__/
-*.pyc
+venv/
+env/
+
+# VS Code
+
+.vscode/
+*.code-workspace
+
+# Environment variables / secrets
+
+.env
+.env.*
+!.env.example
+
+# Local Findly database
 
 findly.db
+*.db
+*.sqlite
+*.sqlite3
 
-clip_images.pt
-clip_images_new.pt
+# Logs
 
-test findly/
+*.log
+logs/
+
+# Temporary files
+
+*.tmp
+*.temp
+*.bak
+
+# Windows
+
+Thumbs.db
+Desktop.ini
+
+# macOS
+
+.DS_Store
+
+# Testing / coverage
+
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Build files
+
+build/
+dist/
+*.egg-info/
+
+# Personal test data
+
+test_data/
+test_images/
+test_documents/
+my_photos/
+"my photos"/
+
+# Large personal media
+
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.zip
+*.rar
+*.7z
