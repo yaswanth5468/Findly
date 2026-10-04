@@ -2,15 +2,19 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 
+from file_watcher import start_watcher
+from natural_language_engine import search_findly
 from scanner import scan_folder
-from image_engine import search_images
-from file_engine import search_files_in_folders
-from combined_engine import search_combined
-from document_engine import search_documents
+from document_index import add_folder_to_index
 
 
 selected_folders = []
+watchers = []
 
+
+# ============================================================
+# FOLDER MANAGEMENT
+# ============================================================
 
 def add_folder():
 
@@ -22,10 +26,33 @@ def add_folder():
 
             selected_folders.append(folder)
 
+            # Initial indexing
+            add_folder_to_index(folder)
+
             scan_folder(folder)
 
-            print("Added folder:", folder)
-            print("Folder scanned successfully.")
+            # Start real-time watcher
+            observer = start_watcher(
+                folder
+            )
+
+            watchers.append(
+                observer
+            )
+
+            print(
+                "Added folder:",
+                folder
+            )
+
+            print(
+                "Folder scanned successfully."
+            )
+
+            print(
+                "Real-time monitoring started."
+            )
+
             print(
                 "Selected folders:",
                 selected_folders
@@ -33,105 +60,35 @@ def add_folder():
 
         else:
 
-            print("Folder already added.")
+            print(
+                "Folder already added."
+            )
 
 
-ai_words = [
-    "person",
-    "people",
-    "man",
-    "woman",
-    "car",
-    "dog",
-    "cat",
-    "food",
-    "family",
-    "college",
-    "laptop"
-]
+def refresh_index():
 
+    if not selected_folders:
 
-def is_combined_search(query):
+        print(
+            "Please add a folder first."
+        )
 
-    query = query.lower()
+        return
 
-    has_visual = False
+    for folder in selected_folders:
 
-    for word in ai_words:
+        add_folder_to_index(
+            folder
+        )
 
-        if word in query:
-
-            has_visual = True
-
-            break
-
-    has_photo = (
-        "photo" in query
-        or "picture" in query
-        or "image" in query
-    )
-
-    has_filter = (
-        "bigger" in query
-        or "larger" in query
-        or "smaller" in query
-        or "over" in query
-        or "under" in query
-        or "from" in query
-        or "2025" in query
-        or "2026" in query
-    )
-
-    return (
-        has_visual
-        and has_photo
-        and has_filter
+    print(
+        "Document index refreshed."
     )
 
 
-def is_ai_search(query):
-
-    query = query.lower()
-
-    if (
-        "photo" in query
-        or "picture" in query
-        or "image" in query
-    ):
-
-        return True
-
-    for word in ai_words:
-
-        if word in query:
-
-            return True
-
-    return False
-
-
-def is_document_search(query):
-
-    query = query.lower()
-
-    document_words = [
-        "document",
-        "documents",
-        "pdf",
-        "word",
-        "docx",
-        "text file",
-        "txt"
-    ]
-
-    for word in document_words:
-
-        if word in query:
-
-            return True
-
-    return False
-
+# ============================================================
+# RESULT MANAGEMENT
+# ============================================================
 
 def clear_results():
 
@@ -150,6 +107,10 @@ def open_file(path):
 
         pass
 
+
+# ============================================================
+# IMAGE RESULTS
+# ============================================================
 
 def show_image_results(results):
 
@@ -185,7 +146,9 @@ def show_image_results(results):
             pady=5
         )
 
-        name = os.path.basename(path)
+        name = os.path.basename(
+            path
+        )
 
         tk.Label(
             frame,
@@ -197,7 +160,8 @@ def show_image_results(results):
 
         tk.Label(
             frame,
-            text="Match: " + str(
+            text="Match: "
+            + str(
                 round(score, 4)
             )
         ).pack(
@@ -212,6 +176,10 @@ def show_image_results(results):
             anchor="e"
         )
 
+
+# ============================================================
+# COMBINED RESULTS
+# ============================================================
 
 def show_combined_results(results):
 
@@ -234,9 +202,13 @@ def show_combined_results(results):
     for result in results:
 
         name = result[0]
+
         extension = result[1]
+
         size = result[2]
+
         path = result[3]
+
         score = result[4]
 
         frame = tk.Frame(
@@ -263,7 +235,8 @@ def show_combined_results(results):
 
         tk.Label(
             frame,
-            text="Type: " + extension
+            text="Type: "
+            + extension
         ).pack(
             anchor="w"
         )
@@ -271,7 +244,9 @@ def show_combined_results(results):
         tk.Label(
             frame,
             text="Size: "
-            + str(round(size, 2))
+            + str(
+                round(size, 2)
+            )
             + " MB"
         ).pack(
             anchor="w"
@@ -280,7 +255,9 @@ def show_combined_results(results):
         tk.Label(
             frame,
             text="Match: "
-            + str(round(score, 4))
+            + str(
+                round(score, 4)
+            )
         ).pack(
             anchor="w"
         )
@@ -301,6 +278,10 @@ def show_combined_results(results):
             anchor="e"
         )
 
+
+# ============================================================
+# NORMAL FILE RESULTS
+# ============================================================
 
 def show_file_results(results):
 
@@ -323,11 +304,17 @@ def show_file_results(results):
     for result in results:
 
         name = result[0]
+
         extension = result[1]
+
         size = result[2]
+
         path = result[3]
+
         created = result[4]
+
         modified = result[5]
+
         taken = result[6]
 
         frame = tk.Frame(
@@ -354,7 +341,8 @@ def show_file_results(results):
 
         tk.Label(
             frame,
-            text="Type: " + extension
+            text="Type: "
+            + extension
         ).pack(
             anchor="w"
         )
@@ -362,7 +350,9 @@ def show_file_results(results):
         tk.Label(
             frame,
             text="Size: "
-            + str(round(size, 2))
+            + str(
+                round(size, 2)
+            )
             + " MB"
         ).pack(
             anchor="w"
@@ -370,7 +360,8 @@ def show_file_results(results):
 
         tk.Label(
             frame,
-            text="Location: " + path,
+            text="Location: "
+            + path,
             wraplength=700
         ).pack(
             anchor="w"
@@ -378,14 +369,16 @@ def show_file_results(results):
 
         tk.Label(
             frame,
-            text="Created: " + str(created)
+            text="Created: "
+            + str(created)
         ).pack(
             anchor="w"
         )
 
         tk.Label(
             frame,
-            text="Modified: " + str(modified)
+            text="Modified: "
+            + str(modified)
         ).pack(
             anchor="w"
         )
@@ -394,7 +387,8 @@ def show_file_results(results):
 
             tk.Label(
                 frame,
-                text="Taken: " + str(taken)
+                text="Taken: "
+                + str(taken)
             ).pack(
                 anchor="w"
             )
@@ -407,6 +401,10 @@ def show_file_results(results):
             anchor="e"
         )
 
+
+# ============================================================
+# DOCUMENT RESULTS
+# ============================================================
 
 def show_document_results(results):
 
@@ -429,8 +427,11 @@ def show_document_results(results):
     for result in results:
 
         file_type = result[0]
+
         path = result[1]
+
         location = result[2]
+
         snippet = result[3]
 
         frame = tk.Frame(
@@ -457,7 +458,8 @@ def show_document_results(results):
 
         tk.Label(
             frame,
-            text="Type: " + file_type
+            text="Type: "
+            + file_type
         ).pack(
             anchor="w"
         )
@@ -512,6 +514,10 @@ def show_document_results(results):
         )
 
 
+# ============================================================
+# MAIN SEARCH
+# ============================================================
+
 def search():
 
     query = search_entry.get().strip()
@@ -542,56 +548,96 @@ def search():
 
         return
 
-    if is_combined_search(query):
+    print(
+        "\nSearching:",
+        query
+    )
 
-        results = search_combined(
-            query
+    # ========================================================
+    # NATURAL LANGUAGE SEARCH
+    # ========================================================
+
+    results = search_findly(
+        query,
+        selected_folders
+    )
+
+    # ========================================================
+    # DISPLAY RESULTS
+    # ========================================================
+
+    if not results:
+
+        search_type_label.config(
+            text="Search type: No results"
         )
 
-        show_combined_results(
-            results
-        )
-
-    elif is_document_search(query):
-
-        results = []
-
-        for folder in selected_folders:
-
-            folder_results = search_documents(
-                query,
-                folder
-            )
-
-            results.extend(
-                folder_results
-            )
-
-        show_document_results(
-            results
-        )
-
-    elif is_ai_search(query):
-
-        results = search_images(
-            query,
-            selected_folders
-        )
-
-        show_image_results(
-            results
+        tk.Label(
+            result_frame,
+            text="No matching files found",
+            font=("Arial", 12)
+        ).pack(
+            pady=20
         )
 
     else:
 
-        results = search_files_in_folders(
-            query,
-            selected_folders
-        )
+        first_result = results[0]
 
-        show_file_results(
-            results
-        )
+        # ----------------------------------------------------
+        # Combined result
+        # Format:
+        # name, extension, size, path, score
+        # ----------------------------------------------------
+
+        if (
+            isinstance(first_result, tuple)
+            and len(first_result) == 5
+        ):
+
+            show_combined_results(
+                results
+            )
+
+        # ----------------------------------------------------
+        # Image result
+        # Format:
+        # path, score
+        # ----------------------------------------------------
+
+        elif (
+            isinstance(first_result, tuple)
+            and len(first_result) == 2
+        ):
+
+            show_image_results(
+                results
+            )
+
+        # ----------------------------------------------------
+        # Document result
+        # Format:
+        # type, path, location, snippet
+        # ----------------------------------------------------
+
+        elif (
+            isinstance(first_result, tuple)
+            and len(first_result) == 4
+        ):
+
+            show_document_results(
+                results
+            )
+
+        # ----------------------------------------------------
+        # Normal file result
+        # ----------------------------------------------------
+
+        else:
+
+            show_file_results(
+                results
+            )
 
     result_count_label.config(
         text="Results found: "
@@ -599,14 +645,24 @@ def search():
     )
 
 
+# ============================================================
+# MAIN WINDOW
+# ============================================================
+
 root = tk.Tk()
 
-root.title("Findly")
+root.title(
+    "Findly"
+)
 
 root.geometry(
     "850x700"
 )
 
+
+# ============================================================
+# TITLE
+# ============================================================
 
 title = tk.Label(
     root,
@@ -618,6 +674,10 @@ title.pack(
     pady=15
 )
 
+
+# ============================================================
+# SEARCH BAR
+# ============================================================
 
 search_frame = tk.Frame(
     root
@@ -654,6 +714,10 @@ search_button.pack(
 )
 
 
+# ============================================================
+# ADD FOLDER BUTTON
+# ============================================================
+
 folder_button = tk.Button(
     search_frame,
     text="ADD FOLDER",
@@ -666,11 +730,36 @@ folder_button.pack(
 )
 
 
+# ============================================================
+# REFRESH BUTTON
+# ============================================================
+
+refresh_button = tk.Button(
+    search_frame,
+    text="REFRESH INDEX",
+    font=("Arial", 12),
+    command=refresh_index
+)
+
+refresh_button.pack(
+    side="right",
+    padx=(10, 0)
+)
+
+
+# ============================================================
+# ENTER KEY
+# ============================================================
+
 search_entry.bind(
     "<Return>",
     lambda event: search()
 )
 
+
+# ============================================================
+# SEARCH TYPE
+# ============================================================
 
 search_type_label = tk.Label(
     root,
@@ -683,6 +772,10 @@ search_type_label.pack(
 )
 
 
+# ============================================================
+# RESULT COUNT
+# ============================================================
+
 result_count_label = tk.Label(
     root,
     text="",
@@ -693,6 +786,10 @@ result_count_label.pack(
     pady=2
 )
 
+
+# ============================================================
+# RESULT CONTAINER
+# ============================================================
 
 result_container = tk.Frame(
     root
@@ -706,10 +803,18 @@ result_container.pack(
 )
 
 
+# ============================================================
+# RESULT CANVAS
+# ============================================================
+
 result_canvas = tk.Canvas(
     result_container
 )
 
+
+# ============================================================
+# SCROLLBAR
+# ============================================================
 
 result_scrollbar = tk.Scrollbar(
     result_container,
@@ -717,6 +822,10 @@ result_scrollbar = tk.Scrollbar(
     command=result_canvas.yview
 )
 
+
+# ============================================================
+# RESULT FRAME
+# ============================================================
 
 result_frame = tk.Frame(
     result_canvas
@@ -755,5 +864,74 @@ result_scrollbar.pack(
     fill="y"
 )
 
+
+# ============================================================
+# AUTOMATIC INDEX REFRESH
+# ============================================================
+
+def automatic_index_refresh():
+
+    if selected_folders:
+
+        print(
+            "\nAutomatic index refresh started."
+        )
+
+        for folder in selected_folders:
+
+            add_folder_to_index(
+                folder
+            )
+
+        print(
+            "Automatic index refresh completed."
+        )
+
+    root.after(
+        60000,
+        automatic_index_refresh
+    )
+
+
+root.after(
+    60000,
+    automatic_index_refresh
+)
+
+
+# ============================================================
+# CLEAN SHUTDOWN
+# ============================================================
+
+def close_findly():
+
+    print(
+        "\nClosing Findly..."
+    )
+
+    for observer in watchers:
+
+        observer.stop()
+
+    for observer in watchers:
+
+        observer.join()
+
+    print(
+        "All watchers stopped."
+    )
+
+    root.destroy()
+
+
+root.protocol(
+    "WM_DELETE_WINDOW",
+    close_findly
+)
+
+
+# ============================================================
+# START FINDLY
+# ============================================================
 
 root.mainloop()

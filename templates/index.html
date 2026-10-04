@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Findly</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <header class="header">
+            <h1>Findly</h1>
+            <p>Find anything on your computer.</p>
+        </header>
+
+        <main>
+
+            <div class="search-box">
+
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="Search your files..."
+                >
+
+                <button onclick="searchFiles()">
+                    Search
+                </button>
+
+            </div>
+
+            <div id="status">
+                Ready
+            </div>
+
+            <div id="results">
+            </div>
+
+        </main>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+
+</html>

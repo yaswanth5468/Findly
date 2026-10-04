@@ -1,7 +1,9 @@
 import os
+
 from datetime import datetime
 
 from image_engine import search_images
+
 from query_parser import parse_query
 
 
@@ -29,9 +31,17 @@ def search_combined(query, folders=None):
     details = parse_query(query)
 
     visual_query = details["visual_query"]
+
     file_type = details["file_type"]
+
     year = details["year"]
+
+    month = details["month"]
+
+    day = details["day"]
+
     size_condition = details["size_condition"]
+
     size_value = details["size_value"]
 
     if not visual_query:
@@ -55,43 +65,95 @@ def search_combined(query, folders=None):
             path
         )[1].lower()
 
+        # -------------------------
+        # File type filter
+        # -------------------------
+
         if file_type == "photo":
 
             if extension not in [
+
                 ".jpg",
                 ".jpeg",
                 ".png",
                 ".gif",
                 ".tif",
                 ".tiff"
+
             ]:
 
                 continue
 
+        # -------------------------
+        # File size
+        # -------------------------
+
         size = (
+
             os.path.getsize(path)
             / (1024 * 1024)
+
         )
 
-        if year:
+        # -------------------------
+        # Date filter
+        # -------------------------
+
+        if year or month or day:
 
             created, modified = get_file_date(
                 path
             )
 
-            found_year = False
+            found_date = False
 
-            if created and created.year == year:
+            # Check creation date
 
-                found_year = True
+            if created:
 
-            if modified and modified.year == year:
+                if (
 
-                found_year = True
+                    (year is None or created.year == year)
 
-            if not found_year:
+                    and
+
+                    (month is None or created.month == month)
+
+                    and
+
+                    (day is None or created.day == day)
+
+                ):
+
+                    found_date = True
+
+            # Check modified date
+
+            if modified:
+
+                if (
+
+                    (year is None or modified.year == year)
+
+                    and
+
+                    (month is None or modified.month == month)
+
+                    and
+
+                    (day is None or modified.day == day)
+
+                ):
+
+                    found_date = True
+
+            if not found_date:
 
                 continue
+
+        # -------------------------
+        # Size filter
+        # -------------------------
 
         if size_condition == ">":
 
@@ -105,19 +167,38 @@ def search_combined(query, folders=None):
 
                 continue
 
+        # -------------------------
+        # Add result
+        # -------------------------
+
         results.append(
+
             (
+
                 os.path.basename(path),
+
                 extension,
+
                 size,
+
                 path,
+
                 score
+
             )
+
         )
 
+    # -------------------------
+    # Sort by AI similarity
+    # -------------------------
+
     results.sort(
+
         key=lambda x: x[4],
+
         reverse=True
+
     )
 
     return results

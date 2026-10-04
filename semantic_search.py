@@ -1,3 +1,5 @@
+
+import os
 import torch
 
 from transformers import AutoTokenizer, AutoModel
@@ -5,19 +7,12 @@ from transformers import AutoTokenizer, AutoModel
 
 model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
-
 tokenizer = AutoTokenizer.from_pretrained(
     model_name
 )
 
 model = AutoModel.from_pretrained(
     model_name
-)
-
-
-document_index = torch.load(
-    "document_embeddings.pt",
-    weights_only=False
 )
 
 
@@ -47,6 +42,20 @@ def get_embedding(text):
 
 
 def search_documents(query):
+
+    index_path = "document_embeddings.pt"
+
+    if not os.path.exists(index_path):
+        return []
+
+    try:
+        document_index = torch.load(
+            index_path,
+            weights_only=False
+        )
+    except Exception as error:
+        print("Could not load document index:", error)
+        return []
 
     query_embedding = get_embedding(
         query
