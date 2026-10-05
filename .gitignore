@@ -33,6 +33,7 @@ findly.db
 *.db
 *.sqlite
 *.sqlite3
+person_detection_index.json
 
 # Logs
 

@@ -1,10 +1,10 @@
-async function searchFiles() {
+async function searchFiles(queryOverride) {
 
     const input = document.getElementById("searchInput");
     const status = document.getElementById("status");
     const results = document.getElementById("results");
 
-    const query = input.value.trim();
+    const query = (queryOverride || input.value).trim();
 
     console.log("Search button clicked");
     console.log("Query:", query);
@@ -56,6 +56,14 @@ async function searchFiles() {
                 </div>
             `;
 
+            if ("speechSynthesis" in window) {
+                const utterance = new SpeechSynthesisUtterance(
+                    "No results found for " + query
+                );
+                speechSynthesis.cancel();
+                speechSynthesis.speak(utterance);
+            }
+
             return;
         }
 
@@ -72,6 +80,14 @@ async function searchFiles() {
 
         });
 
+        if ("speechSynthesis" in window) {
+            const utterance = new SpeechSynthesisUtterance(
+                "I found " + data.count + " results for " + query
+            );
+            speechSynthesis.cancel();
+            speechSynthesis.speak(utterance);
+        }
+
     } catch (error) {
 
         console.error("Search error:", error);
@@ -80,6 +96,50 @@ async function searchFiles() {
             "Could not connect to Findly.";
 
     }
+}
+
+function startVoiceSearch() {
+
+    const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    const voiceButton = document.getElementById("voiceButton");
+    const input = document.getElementById("searchInput");
+    const status = document.getElementById("status");
+
+    if (!SpeechRecognition) {
+        status.textContent = "Voice input is not supported in this browser.";
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = function() {
+        voiceButton.disabled = true;
+        status.textContent = "Listening...";
+    };
+
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+        status.textContent = "Voice query captured: " + transcript;
+        searchFiles(transcript);
+    };
+
+    recognition.onerror = function(event) {
+        status.textContent = "Voice input failed. Please try again.";
+        voiceButton.disabled = false;
+    };
+
+    recognition.onend = function() {
+        voiceButton.disabled = false;
+    };
+
+    recognition.start();
 }
 
 

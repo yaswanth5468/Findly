@@ -12,7 +12,10 @@ SUPPORTED_EXTENSIONS = {
     ".jpg",
     ".jpeg",
     ".png",
-    ".webp"
+    ".webp",
+    ".gif",
+    ".tif",
+    ".tiff"
 }
 
 
@@ -113,13 +116,16 @@ def is_supported_image(path):
 def index_image_folder(folder):
 
     image_data = load_image_index()
+    image_paths = []
 
     existing_paths = {
-        os.path.abspath(path)
+        os.path.normcase(os.path.abspath(path))
         for path, embedding in image_data
     }
 
     new_count = 0
+    person_scanned = 0
+    people_detected = 0
 
     for root, folders, files in os.walk(folder):
 
@@ -142,33 +148,50 @@ def index_image_folder(folder):
             absolute_path = os.path.abspath(
                 path
             )
+            image_paths.append((path, absolute_path))
 
-            if absolute_path in existing_paths:
-                continue
+    if image_paths:
+        from person_detector import (
+            PERSON_DETECTION_THRESHOLD,
+            index_person_image,
+            initialize_person_detector,
+        )
 
+        initialize_person_detector()
+
+    for path, absolute_path in image_paths:
+
+        normalized_path = os.path.normcase(absolute_path)
+
+        if normalized_path not in existing_paths:
             print(
                 "Analyzing new image:",
                 path
             )
 
-            embedding = get_image_embedding(
-                path
-            )
-
+            embedding = get_image_embedding(path)
             if embedding is not None:
-
-                image_data.append(
-                    (
-                        path,
-                        embedding
-                    )
-                )
-
-                existing_paths.add(
-                    absolute_path
-                )
-
+                image_data.append((path, embedding))
+                existing_paths.add(normalized_path)
                 new_count += 1
+
+        try:
+            person_confidence = index_person_image(path)
+            if person_confidence is not None:
+                person_scanned += 1
+                if person_confidence >= PERSON_DETECTION_THRESHOLD:
+                    people_detected += 1
+                    print(
+                        "Person detected:",
+                        path,
+                        round(person_confidence, 3)
+                    )
+        except OSError as error:
+            print(
+                "Could not analyze image for people:",
+                path,
+                error
+            )
 
     save_image_index(
         image_data
@@ -183,6 +206,14 @@ def index_image_folder(folder):
         "Total images in index:",
         len(image_data)
     )
+    print(
+        "Photos checked for people:",
+        person_scanned,
+        "| photos with person detections:",
+        people_detected
+    )
+
+    return new_count
 
 
 def update_image(path):
@@ -230,6 +261,17 @@ def update_image(path):
         image_data
     )
 
+    from person_detector import index_person_image
+
+    try:
+        index_person_image(path, force=True)
+    except OSError as error:
+        print(
+            "Could not refresh person detection for image:",
+            path,
+            error
+        )
+
 
 def remove_image(path):
 
@@ -258,6 +300,10 @@ def remove_image(path):
         save_image_index(
             new_data
         )
+
+    from person_detector import remove_person_image
+
+    remove_person_image(path)
 
 
 if __name__ == "__main__":

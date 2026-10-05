@@ -3,26 +3,88 @@ import re
 from datetime import datetime, timedelta
 
 
+def normalize_path(value):
+
+    if value is None:
+        return ""
+
+    value = str(value).replace("\\", "/")
+    value = re.sub(r"/{2,}", "/", value)
+    return value.rstrip("/")
+
+
+def normalize_search_folders(folders):
+
+    if not folders:
+        return []
+
+    if isinstance(folders, str):
+        folders = [folders]
+
+    cleaned = []
+
+    for folder in folders:
+        if not folder:
+            continue
+        normalized = normalize_path(folder)
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+
+    return cleaned
+
+
+def deduplicate_sqlite_results(results):
+
+    unique = []
+    seen = set()
+
+    for result in results:
+        if not result:
+            continue
+
+        if len(result) >= 7 and isinstance(result[3], str):
+            file_path = result[3]
+        elif len(result) > 1 and isinstance(result[1], str):
+            file_path = result[1]
+        else:
+            file_path = str(result)
+
+        normalised_path = normalize_path(file_path).casefold()
+
+        if normalised_path in seen:
+            continue
+
+        seen.add(normalised_path)
+        unique.append(result)
+
+    return unique
+
+
 def search_files(text, folders=None):
+
+    if text is None:
+        return []
 
     conn = sqlite3.connect("findly.db")
     cursor = conn.cursor()
 
-    text = text.lower()
+    text = str(text).lower()
 
+    tokens = set(re.findall(r"[a-z0-9]+", text))
     types = []
 
-    if "photo" in text or "image" in text:
+    if tokens & {"photo", "photos", "picture", "pictures", "image", "images"}:
         types = [
             ".jpg",
             ".jpeg",
             ".png",
             ".gif",
             ".tif",
-            ".tiff"
+            ".tiff",
+            ".webp"
         ]
 
-    elif "video" in text:
+    elif tokens & {"video", "videos"}:
         types = [
             ".mp4",
             ".mkv",
@@ -30,15 +92,54 @@ def search_files(text, folders=None):
             ".mov"
         ]
 
-    elif "document" in text or "pdf" in text:
+    elif tokens & {"document", "documents", "doc", "docs", "file", "files", "text", "texts"}:
         types = [
             ".pdf",
-            ".docx",
             ".doc",
-            ".txt"
+            ".docx",
+            ".txt",
+            ".rtf",
+            ".odt",
+            ".xls",
+            ".xlsx",
+            ".xlsm",
+            ".xlsb",
+            ".csv",
+            ".ods",
+            ".ppt",
+            ".pptx",
+            ".odp"
         ]
 
-    elif "python" in text:
+    elif tokens & {"excel", "spreadsheet", "spreadsheets", "xls", "xlsx", "xlsm", "xlsb", "csv"}:
+        types = [
+            ".xls",
+            ".xlsx",
+            ".xlsm",
+            ".xlsb",
+            ".csv",
+            ".ods"
+        ]
+
+    elif "pdf" in tokens or "pdfs" in tokens:
+        types = [".pdf"]
+
+    elif "docx" in tokens or "word" in tokens:
+        types = [".doc", ".docx"]
+
+    elif "txt" in tokens or "text" in tokens:
+        types = [".txt"]
+
+    elif tokens & {"presentation", "presentations", "ppt", "pptx"}:
+        types = [".ppt", ".pptx", ".odp"]
+
+    elif tokens & {"rtf", "odt", "ods", "odp"}:
+        types = [
+            "." + extension
+            for extension in tokens & {"rtf", "odt", "ods", "odp"}
+        ]
+
+    elif "python" in tokens or "py" in tokens:
         types = [
             ".py"
         ]
@@ -71,6 +172,37 @@ def search_files(text, folders=None):
     conditions = []
     values = []
 
+    filter_words = {
+        "find", "search", "show", "list", "get", "all", "every",
+        "my", "the", "a", "an", "of", "for", "from", "in", "on",
+        "with", "and", "please", "file", "files", "document",
+        "documents", "doc", "docs", "text", "texts", "pdf", "pdfs",
+        "word", "docx", "txt", "excel", "spreadsheet", "spreadsheets",
+        "xls", "xlsx", "xlsm", "xlsb", "csv", "presentation",
+        "presentations", "ppt", "pptx", "rtf", "odt", "ods", "odp",
+        "photo", "photos", "picture", "pictures", "image", "images",
+        "video", "videos", "python", "py", "today", "yesterday",
+        "this", "last", "week", "month", "year", "january",
+        "february", "march", "april", "may", "june", "july",
+        "august", "september", "october", "november", "december",
+        "monday", "tuesday", "wednesday", "thursday", "friday",
+        "saturday", "sunday", "bigger", "larger", "greater", "more",
+        "over", "above", "smaller", "less", "under", "below",
+        "least", "most", "than", "between", "to", "gb", "mb", "kb",
+        "biggest", "largest", "smallest", "large", "small"
+    }
+    search_terms = [
+        word
+        for word in re.findall(r"[a-z0-9]+", text)
+        if word not in filter_words
+        and not re.fullmatch(r"(?:19|20)\d{2}", word)
+        and not re.fullmatch(r"\d+(?:\.\d+)?", word)
+    ]
+
+    for word in search_terms:
+        conditions.append("LOWER(name) LIKE ?")
+        values.append("%" + word + "%")
+
     if types:
 
         placeholders = ",".join(
@@ -78,7 +210,7 @@ def search_files(text, folders=None):
         )
 
         conditions.append(
-            "extension IN (" + placeholders + ")"
+            "LOWER(extension) IN (" + placeholders + ")"
         )
 
         values.extend(types)
@@ -664,19 +796,20 @@ def search_files(text, folders=None):
             for condition in conditions
         )
 
-    if folders:
+    normalized_folders = normalize_search_folders(folders)
+
+    if normalized_folders:
 
         folder_conditions = []
 
-        for folder in folders:
+        for folder in normalized_folders:
 
             folder_conditions.append(
-                "path LIKE ?"
+                "REPLACE(REPLACE(REPLACE(path, '\\', '/'), '//', '/'), '///', '/') LIKE ?"
             )
 
             values.append(
-                folder.rstrip("\\/")
-                + "\\%"
+                folder + "/%"
             )
 
         folder_condition = (
@@ -700,7 +833,9 @@ def search_files(text, folders=None):
         values
     )
 
-    results = cursor.fetchall()
+    results = deduplicate_sqlite_results(
+        cursor.fetchall()
+    )
 
     conn.close()
 
@@ -709,7 +844,10 @@ def search_files(text, folders=None):
 
 def search_files_in_folders(query, folders):
 
+    if query is None:
+        return []
+
     return search_files(
-        query,
+        str(query),
         folders
     )

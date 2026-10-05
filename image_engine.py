@@ -10,6 +10,7 @@ import os
 # ============================================================
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
+MIN_IMAGE_SIMILARITY = 0.20
 
 
 print(
@@ -172,6 +173,7 @@ def search_images(
     # --------------------------------------------------------
 
     results = []
+    candidate_count = 0
 
 
     for path, image_embedding in image_data:
@@ -211,6 +213,8 @@ def search_images(
 
                 continue
 
+        candidate_count += 1
+
 
         # ----------------------------------------------------
         # Convert stored embedding
@@ -231,12 +235,13 @@ def search_images(
         ).item()
 
 
-        results.append(
-            (
-                path,
-                score
+        if score >= MIN_IMAGE_SIMILARITY:
+            results.append(
+                (
+                    path,
+                    score
+                )
             )
-        )
 
 
     # --------------------------------------------------------
@@ -250,6 +255,13 @@ def search_images(
 
 
     print(
-        "Images searched:",
+        "Indexed images checked:",
+        candidate_count
+    )
+
+    print(
+        "Images matching similarity threshold:",
         len(results)
     )
+
+    return results

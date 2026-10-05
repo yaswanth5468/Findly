@@ -23,7 +23,10 @@ IMAGE_EXTENSIONS = {
     ".jpg",
     ".jpeg",
     ".png",
-    ".webp"
+    ".webp",
+    ".gif",
+    ".tif",
+    ".tiff"
 }
 
 
