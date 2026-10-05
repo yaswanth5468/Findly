@@ -4,6 +4,92 @@ from datetime import datetime
 from PIL import Image
 
 
+def refresh_file(path):
+
+    if not os.path.isfile(path):
+        remove_file(path)
+        return False
+
+    path = os.path.normpath(path).replace("\\", "/")
+    file_name = os.path.basename(path)
+    extension = os.path.splitext(file_name)[1].lower()
+    size = os.path.getsize(path) / (1024 * 1024)
+    created = datetime.fromtimestamp(os.path.getctime(path))
+    modified = datetime.fromtimestamp(os.path.getmtime(path))
+    taken = None
+
+    if extension in {".jpg", ".jpeg", ".tif", ".tiff"}:
+        try:
+            with Image.open(path) as image:
+                exif = image.getexif()
+                taken = (
+                    exif.get(36867)
+                    or exif.get(36868)
+                    or exif.get(306)
+                )
+        except (OSError, ValueError):
+            pass
+
+    connection = sqlite3.connect("findly.db")
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                path TEXT UNIQUE,
+                extension TEXT,
+                size REAL,
+                created TEXT,
+                modified TEXT,
+                taken TEXT
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO files
+            (name, path, extension, size, created, modified, taken)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                file_name,
+                path,
+                extension,
+                size,
+                str(created),
+                str(modified),
+                taken
+            )
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return True
+
+
+def remove_file(path):
+
+    normalized_path = os.path.normpath(path).replace("\\", "/")
+    connection = sqlite3.connect("findly.db")
+    try:
+        connection.execute(
+            "DELETE FROM files WHERE REPLACE(path, char(92), '/') = ?",
+            (normalized_path,)
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def scan_folder(folder):
 
     connection = sqlite3.connect("findly.db")

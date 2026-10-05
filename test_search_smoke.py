@@ -29,6 +29,81 @@ class SearchSmokeTests(unittest.TestCase):
         self.assertEqual(summary["scanned"], 1)
         self.assertEqual(summary["skipped"], 0)
 
+    def test_refresh_file_updates_modified_timestamp(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database_path = os.path.join(folder, "test.db")
+            file_path = os.path.join(folder, "notes.txt")
+            connect = sqlite3.connect
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write("before")
+
+            with patch(
+                "scanner.sqlite3.connect",
+                side_effect=lambda _path: connect(database_path)
+            ):
+                scanner.refresh_file(file_path)
+                connection = connect(database_path)
+                before = connection.execute(
+                    "SELECT modified FROM files WHERE name = ?",
+                    ("notes.txt",)
+                ).fetchone()[0]
+                connection.close()
+
+                with open(file_path, "a", encoding="utf-8") as file:
+                    file.write(" updated")
+                os.utime(file_path, (1_800_000_000, 1_800_000_000))
+                scanner.refresh_file(file_path)
+                connection = connect(database_path)
+                after = connection.execute(
+                    "SELECT modified FROM files WHERE name = ?",
+                    ("notes.txt",)
+                ).fetchone()[0]
+                connection.close()
+
+            self.assertNotEqual(before, after)
+
+    def test_remove_file_deletes_its_index_record(self):
+        with tempfile.TemporaryDirectory() as folder:
+            database_path = os.path.join(folder, "test.db")
+            file_path = os.path.join(folder, "notes.txt")
+            connect = sqlite3.connect
+
+            with patch(
+                "scanner.sqlite3.connect",
+                side_effect=lambda _path: connect(database_path)
+            ):
+                connection = connect(database_path)
+                connection.execute(
+                    """
+                    CREATE TABLE files (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT,
+                        path TEXT UNIQUE,
+                        extension TEXT,
+                        size REAL,
+                        created TEXT,
+                        modified TEXT,
+                        taken TEXT
+                    )
+                    """
+                )
+                connection.execute(
+                    "INSERT INTO files (name, path) VALUES (?, ?)",
+                    ("notes.txt", file_path.replace("\\", "/"))
+                )
+                connection.commit()
+                connection.close()
+
+                scanner.remove_file(file_path)
+
+            connection = connect(database_path)
+            count = connection.execute(
+                "SELECT COUNT(*) FROM files WHERE name = ?",
+                ("notes.txt",)
+            ).fetchone()[0]
+            connection.close()
+            self.assertEqual(count, 0)
+
     def test_search_files_deduplicates_same_path_results(self):
         connection = sqlite3.connect(":memory:")
         connection.execute(

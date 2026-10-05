@@ -6,6 +6,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 from document_index import add_folder_to_index
+from scanner import refresh_file, remove_file
 
 from image_indexer import (
     update_image,
@@ -39,6 +40,8 @@ class FindlyFileWatcher(FileSystemEventHandler):
         self.document_timer = None
 
         self.lock = threading.Lock()
+        self.file_metadata_timer = None
+        self.pending_file_updates = {}
 
     def get_extension(self, path):
 
@@ -60,6 +63,38 @@ class FindlyFileWatcher(FileSystemEventHandler):
 
             self.document_timer.start()
 
+    def schedule_file_metadata_refresh(self, path, exists=True):
+
+        with self.lock:
+            self.pending_file_updates[path] = exists
+
+            if self.file_metadata_timer is not None:
+                self.file_metadata_timer.cancel()
+
+            self.file_metadata_timer = threading.Timer(
+                1,
+                self.refresh_file_metadata
+            )
+            self.file_metadata_timer.start()
+
+    def refresh_file_metadata(self):
+
+        with self.lock:
+            pending_updates = self.pending_file_updates
+            self.pending_file_updates = {}
+            self.file_metadata_timer = None
+
+        for path, exists in pending_updates.items():
+            try:
+                if exists and os.path.isfile(path):
+                    refresh_file(path)
+                    print("File metadata refreshed:", path)
+                else:
+                    remove_file(path)
+                    print("Removed missing file from index:", path)
+            except OSError as error:
+                print("Could not refresh file metadata:", path, error)
+
     def refresh_documents(self):
 
         print("\nDocument changes settled.")
@@ -78,6 +113,7 @@ class FindlyFileWatcher(FileSystemEventHandler):
 
     def handle_created(self, path):
 
+        self.schedule_file_metadata_refresh(path)
         extension = self.get_extension(
             path
         )
@@ -104,6 +140,7 @@ class FindlyFileWatcher(FileSystemEventHandler):
 
     def handle_modified(self, path):
 
+        self.schedule_file_metadata_refresh(path)
         extension = self.get_extension(
             path
         )
@@ -130,6 +167,7 @@ class FindlyFileWatcher(FileSystemEventHandler):
 
     def handle_deleted(self, path):
 
+        self.schedule_file_metadata_refresh(path, exists=False)
         extension = self.get_extension(
             path
         )
@@ -156,6 +194,8 @@ class FindlyFileWatcher(FileSystemEventHandler):
 
     def handle_moved(self, old_path, new_path):
 
+        self.schedule_file_metadata_refresh(old_path, exists=False)
+        self.schedule_file_metadata_refresh(new_path)
         old_extension = self.get_extension(
             old_path
         )

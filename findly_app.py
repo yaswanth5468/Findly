@@ -14,6 +14,7 @@ selected_folders = []
 pending_folders = set()
 watchers = []
 voice_assistant = VoiceAssistant()
+automatic_refresh_running = False
 
 
 # ============================================================
@@ -1240,36 +1241,52 @@ result_scrollbar.pack(
 
 def automatic_index_refresh():
 
-    if selected_folders:
+    global automatic_refresh_running
 
-        print(
-            "\nAutomatic index refresh started."
-        )
+    if selected_folders and not automatic_refresh_running:
+        automatic_refresh_running = True
+        folders_to_refresh = tuple(selected_folders)
 
-        inaccessible = []
+        def refresh_indexes():
+            inaccessible = []
 
-        for folder in selected_folders:
-            if not os.path.isdir(folder):
-                inaccessible.append(folder)
-                continue
+            for folder in folders_to_refresh:
+                if not os.path.isdir(folder):
+                    inaccessible.append(folder)
+                    continue
 
-            try:
-                with os.scandir(folder):
-                    pass
-                add_folder_to_index(folder)
-            except OSError as error:
-                inaccessible.append(f"{folder} ({error})")
+                try:
+                    with os.scandir(folder):
+                        pass
+                    add_folder_to_index(folder)
+                    scan_folder(folder)
+                except Exception as error:
+                    inaccessible.append(f"{folder} ({error})")
 
-        if inaccessible:
-            set_status(
-                "Automatic refresh skipped missing or inaccessible folders.",
-                "#9a6700"
-            )
-            print("Folders skipped during automatic refresh:", inaccessible)
-        else:
-            print(
-                "Automatic index refresh completed."
-            )
+            def finish_refresh():
+                global automatic_refresh_running
+                automatic_refresh_running = False
+
+                if inaccessible:
+                    set_status(
+                        "Automatic refresh skipped missing or inaccessible "
+                        "folders.",
+                        "#9a6700"
+                    )
+                    print(
+                        "Folders skipped during automatic refresh:",
+                        inaccessible
+                    )
+                else:
+                    set_status("Indexes refreshed.", "#006400")
+                    print("Automatic file and document refresh completed.")
+
+            root.after(0, finish_refresh)
+
+        threading.Thread(
+            target=refresh_indexes,
+            daemon=True
+        ).start()
 
     root.after(
         60000,
