@@ -146,6 +146,43 @@ def remove_person_image(path):
             _save_index(data)
 
 
+def prune_person_images(folder, current_paths):
+    normalized_folder = _normalise_path(folder)
+    current_paths = {
+        os.path.normcase(os.path.abspath(path))
+        for path in current_paths
+    }
+
+    with _index_lock:
+        data = _load_index()
+        stale_paths = []
+
+        for key, entry in data.items():
+            path = (
+                entry.get("path", key)
+                if isinstance(entry, dict)
+                else key
+            )
+            normalized_path = _normalise_path(path)
+            try:
+                inside_folder = (
+                    os.path.commonpath(
+                        [normalized_path, normalized_folder]
+                    )
+                    == normalized_folder
+                )
+            except ValueError:
+                continue
+
+            if inside_folder and normalized_path not in current_paths:
+                stale_paths.append(key)
+
+        if stale_paths:
+            for key in stale_paths:
+                del data[key]
+            _save_index(data)
+
+
 def search_person_images(folders=None):
 
     with _index_lock:

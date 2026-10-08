@@ -2,44 +2,7 @@
 import os
 import torch
 
-from transformers import AutoTokenizer, AutoModel
-
-
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
-
-tokenizer = AutoTokenizer.from_pretrained(
-    model_name
-)
-
-model = AutoModel.from_pretrained(
-    model_name
-)
-
-
-def get_embedding(text):
-
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        padding=True,
-        truncation=True
-    )
-
-    with torch.no_grad():
-
-        output = model(**inputs)
-
-    embedding = output.last_hidden_state.mean(
-        dim=1
-    )
-
-    embedding = embedding / embedding.norm(
-        dim=1,
-        keepdim=True
-    )
-
-    return embedding[0]
-
+from document_index import get_embedding
 
 def search_documents(query):
 

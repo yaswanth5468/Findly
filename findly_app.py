@@ -1,20 +1,71 @@
+import json
 import os
+import tempfile
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from file_watcher import start_watcher
-from natural_language_engine import search_findly
 from scanner import scan_folder
-from document_index import add_folder_to_index
 from voice_assistant import VoiceAssistant
 
 
-selected_folders = []
+FOLDER_CONFIG_PATH = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "Findly",
+    "approved_folders.json",
+)
+
+
+def load_approved_folders():
+    if not os.path.exists(FOLDER_CONFIG_PATH):
+        return []
+
+    with open(FOLDER_CONFIG_PATH, "r", encoding="utf-8") as config_file:
+        data = json.load(config_file)
+
+    if not isinstance(data, list) or any(
+        not isinstance(folder, str) for folder in data
+    ):
+        raise ValueError("Saved folder permissions are not a valid list.")
+
+    return list(dict.fromkeys(os.path.abspath(folder) for folder in data))
+
+
+def save_approved_folders():
+    directory = os.path.dirname(FOLDER_CONFIG_PATH)
+    os.makedirs(directory, exist_ok=True)
+    temporary_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=directory,
+            suffix=".tmp",
+            delete=False,
+        ) as config_file:
+            temporary_path = config_file.name
+            json.dump(selected_folders, config_file, indent=2)
+        os.replace(temporary_path, FOLDER_CONFIG_PATH)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
+try:
+    selected_folders = load_approved_folders()
+    startup_config_error = None
+except (OSError, ValueError, json.JSONDecodeError) as error:
+    selected_folders = []
+    startup_config_error = error
+
 pending_folders = set()
 watchers = []
+folder_watchers = {}
 voice_assistant = VoiceAssistant()
 automatic_refresh_running = False
+photo_results = []
+photo_page_size = 24
 
 
 # ============================================================
@@ -22,14 +73,21 @@ automatic_refresh_running = False
 # ============================================================
 
 def add_folder():
+    if automatic_refresh_running:
+        set_status("Wait for the current index refresh to finish.", "#9a6700")
+        return
 
     folder = filedialog.askdirectory()
 
     if folder:
 
         folder = os.path.abspath(folder)
+        normalized_folder = os.path.normcase(folder)
 
-        if folder in selected_folders or folder in pending_folders:
+        if any(
+            os.path.normcase(existing) == normalized_folder
+            for existing in selected_folders + list(pending_folders)
+        ):
             messagebox.showinfo(
                 "Folder already added",
                 "This folder is already included or currently being scanned."
@@ -75,13 +133,16 @@ def add_folder():
         search_button.config(state="disabled")
         folder_button.config(state="disabled")
         refresh_button.config(state="disabled")
+        manage_folders_button.config(state="disabled")
 
         def index_folder():
             try:
-                add_folder_to_index(folder)
-                scan_summary = scan_folder(folder)
+                from document_index import add_folder_to_index
+                from file_watcher import start_watcher
                 from image_indexer import index_image_folder
 
+                add_folder_to_index(folder)
+                scan_summary = scan_folder(folder)
                 new_images = index_image_folder(folder)
                 observer = start_watcher(folder)
             except Exception as error:
@@ -90,6 +151,7 @@ def add_folder():
                     search_button.config(state="normal")
                     folder_button.config(state="normal")
                     refresh_button.config(state="normal")
+                    manage_folders_button.config(state="normal")
                     set_status("Folder scan failed.", "#b22222")
                     messagebox.showerror(
                         "Folder indexing failed",
@@ -104,9 +166,20 @@ def add_folder():
                 pending_folders.discard(folder)
                 selected_folders.append(folder)
                 watchers.append(observer)
+                folder_watchers[folder] = observer
+                try:
+                    save_approved_folders()
+                except OSError as error:
+                    messagebox.showerror(
+                        "Folder not remembered",
+                        "The folder is approved for this session, but Findly "
+                        "could not save its approval for the next launch.\n\n"
+                        f"{error}"
+                    )
                 search_button.config(state="normal")
                 folder_button.config(state="normal")
                 refresh_button.config(state="normal")
+                manage_folders_button.config(state="normal")
                 scanned = scan_summary["scanned"]
                 skipped = scan_summary["skipped"]
                 status = (
@@ -123,6 +196,7 @@ def add_folder():
                 print("File scan summary:", scan_summary)
                 print("Real-time monitoring started.")
                 print("Selected folders:", selected_folders)
+                update_folder_status()
 
             root.after(0, report_success)
 
@@ -133,45 +207,155 @@ def add_folder():
 
 
 def refresh_index():
+    global automatic_refresh_running
 
     if not selected_folders:
 
-        print(
-            "Please add a folder first."
-        )
-
+        set_status("Please add a folder first.", "#b22222")
         return
 
-    inaccessible = []
+    if automatic_refresh_running:
+        set_status("An index refresh is already running.", "#9a6700")
+        return
 
+    automatic_refresh_running = True
+    folders_to_refresh = tuple(selected_folders)
+    refresh_button.config(state="disabled")
+    folder_button.config(state="disabled")
+    manage_folders_button.config(state="disabled")
+    set_status("Refreshing selected folders...", "#1d4ed8")
+
+    def refresh_folders():
+        inaccessible = []
+
+        for folder in folders_to_refresh:
+            if not os.path.isdir(folder):
+                inaccessible.append(f"{folder} (folder is missing)")
+                continue
+
+            try:
+                from document_index import add_folder_to_index
+                from image_indexer import index_image_folder
+
+                with os.scandir(folder):
+                    pass
+                add_folder_to_index(folder)
+                scan_folder(folder)
+                index_image_folder(folder)
+            except Exception as error:
+                inaccessible.append(f"{folder} (indexing failed: {error})")
+
+        def finish_refresh():
+            global automatic_refresh_running
+            automatic_refresh_running = False
+            refresh_button.config(state="normal")
+            folder_button.config(state="normal")
+            manage_folders_button.config(state="normal")
+
+            if inaccessible:
+                messagebox.showwarning(
+                    "Some folders could not be refreshed",
+                    "These folders are missing or inaccessible:\n\n"
+                    + "\n".join(inaccessible)
+                )
+                set_status(
+                    "Index refreshed with inaccessible folders.",
+                    "#b22222"
+                )
+            else:
+                set_status("Index refreshed successfully.", "#006400")
+                print("Document and file indexes refreshed.")
+
+        root.after(0, finish_refresh)
+
+    threading.Thread(target=refresh_folders, daemon=True).start()
+
+
+def update_folder_status():
+    if "folder_status_label" not in globals():
+        return
+
+    count = len(selected_folders)
+    folder_status_label.config(
+        text=(
+            f"{count} approved folder(s) selected"
+            if count
+            else "No folders approved yet"
+        )
+    )
+
+
+def manage_folders():
+    if not selected_folders:
+        messagebox.showinfo(
+            "Approved folders",
+            "No folders are currently approved for Findly."
+        )
+        return
+
+    dialog = tk.Toplevel(root)
+    dialog.title("Manage approved folders")
+    dialog.transient(root)
+    dialog.grab_set()
+    dialog.geometry("620x320")
+
+    tk.Label(
+        dialog,
+        text="Findly only indexes these folders and their subfolders:",
+        anchor="w",
+    ).pack(fill="x", padx=12, pady=(12, 6))
+
+    folder_list = tk.Listbox(dialog, selectmode=tk.SINGLE)
+    folder_list.pack(fill="both", expand=True, padx=12, pady=6)
     for folder in selected_folders:
-        if not os.path.isdir(folder):
-            inaccessible.append(folder)
-            continue
+        folder_list.insert(tk.END, folder)
+
+    def remove_selected_folder():
+        selection = folder_list.curselection()
+        if not selection:
+            set_status("Select a folder to remove.", "#9a6700")
+            return
+
+        folder = folder_list.get(selection[0])
+        if not messagebox.askyesno(
+            "Remove folder approval?",
+            f"Findly will stop monitoring and searching this folder:\n\n"
+            f"{folder}\n\nThis will not delete any files.",
+            parent=dialog,
+        ):
+            return
+
+        selected_folders.remove(folder)
+        observer = folder_watchers.pop(folder, None)
 
         try:
-            with os.scandir(folder):
-                pass
-            add_folder_to_index(folder)
-            scan_folder(folder)
-            from image_indexer import index_image_folder
-
-            index_image_folder(folder)
+            save_approved_folders()
         except OSError as error:
-            inaccessible.append(f"{folder} ({error})")
-        except Exception as error:
-            inaccessible.append(f"{folder} (indexing failed: {error})")
+            selected_folders.append(folder)
+            if observer is not None:
+                folder_watchers[folder] = observer
+            messagebox.showerror(
+                "Could not update folder approvals",
+                f"Findly could not save the change:\n\n{error}",
+                parent=dialog,
+            )
+            return
 
-    if inaccessible:
-        messagebox.showwarning(
-            "Some folders could not be refreshed",
-            "These folders are missing or inaccessible:\n\n"
-            + "\n".join(inaccessible)
-        )
-        set_status("Index refreshed with inaccessible folders.", "#b22222")
-    else:
-        set_status("Index refreshed successfully.", "#006400")
-        print("Document and file indexes refreshed.")
+        if observer is not None:
+            observer.stop()
+            observer.join()
+            watchers.remove(observer)
+        folder_list.delete(selection[0])
+        update_folder_status()
+        set_status("Folder approval removed.")
+        if not selected_folders:
+            dialog.destroy()
+
+    tk.Button(
+        dialog,
+        text="REMOVE SELECTED FOLDER",
+        command=remove_selected_folder,
+    ).pack(anchor="e", padx=12, pady=(4, 12))
 
 
 # ============================================================
@@ -254,12 +438,22 @@ def open_file(path):
 # ============================================================
 
 def show_image_results(results):
+    global photo_results
+
+    photo_results = list(results)
+    show_image_results_page(0)
+
+
+def show_image_results_page(page):
+    global photo_results
+
+    clear_results()
 
     search_type_label.config(
         text="Search type: AI Photo Search"
     )
 
-    if not results:
+    if not photo_results:
 
         tk.Label(
             result_frame,
@@ -271,51 +465,104 @@ def show_image_results(results):
 
         return
 
-    for path, score in results:
+    page_count = (len(photo_results) + photo_page_size - 1) // photo_page_size
+    page = max(0, min(page, page_count - 1))
+    start = page * photo_page_size
+    page_results = photo_results[start:start + photo_page_size]
 
-        frame = tk.Frame(
-            result_frame,
+    navigation = tk.Frame(result_frame, bg="#f3f6fb")
+    navigation.pack(fill="x", padx=10, pady=(6, 10))
+
+    tk.Label(
+        navigation,
+        text=f"Photos {start + 1}-{start + len(page_results)} of {len(photo_results)}",
+        bg="#f3f6fb",
+        fg="#445067",
+    ).pack(side="left")
+
+    if page_count > 1:
+        tk.Button(
+            navigation,
+            text="PREVIOUS",
+            state="normal" if page > 0 else "disabled",
+            command=lambda: show_image_results_page(page - 1),
+        ).pack(side="right", padx=(6, 0))
+        tk.Button(
+            navigation,
+            text=f"PAGE {page + 1} / {page_count}",
+            state="disabled",
+        ).pack(side="right")
+        tk.Button(
+            navigation,
+            text="NEXT",
+            state="normal" if page + 1 < page_count else "disabled",
+            command=lambda: show_image_results_page(page + 1),
+        ).pack(side="right", padx=(0, 6))
+
+    gallery = tk.Frame(result_frame, bg="#f3f6fb")
+    gallery.pack(fill="x", padx=10, pady=(0, 10))
+
+    from PIL import Image, ImageTk
+
+    for index, (path, score) in enumerate(page_results):
+        card = tk.Frame(
+            gallery,
+            bg="white",
             bd=1,
             relief="solid",
-            padx=10,
-            pady=10
+            padx=8,
+            pady=8,
+            width=270,
+            height=245,
         )
+        card.grid(
+            row=index // 3,
+            column=index % 3,
+            padx=5,
+            pady=5,
+            sticky="nsew",
+        )
+        card.grid_propagate(False)
 
-        frame.pack(
-            fill="x",
-            padx=10,
-            pady=5
-        )
-
-        name = os.path.basename(
-            path
-        )
+        try:
+            with Image.open(path) as source:
+                preview = source.convert("RGB")
+                preview.thumbnail((245, 155), Image.Resampling.LANCZOS)
+            image = ImageTk.PhotoImage(preview)
+            preview_label = tk.Label(card, image=image, bg="white")
+            preview_label.image = image
+            preview_label.pack(pady=(0, 6))
+        except (OSError, ValueError):
+            tk.Label(
+                card,
+                text="Preview unavailable",
+                bg="#eef1f6",
+                fg="#56627a",
+                width=30,
+                height=8,
+            ).pack(pady=(0, 6))
 
         tk.Label(
-            frame,
-            text=name,
-            font=("Arial", 11, "bold")
-        ).pack(
-            anchor="w"
-        )
-
+            card,
+            text=os.path.basename(path),
+            font=("Segoe UI", 10, "bold"),
+            bg="white",
+            wraplength=245,
+        ).pack(fill="x")
         tk.Label(
-            frame,
-            text="Match: "
-            + str(
-                round(score, 4)
-            )
-        ).pack(
-            anchor="w"
-        )
-
+            card,
+            text=f"Match: {score:.4f}",
+            bg="white",
+            fg="#56627a",
+        ).pack(anchor="w")
         tk.Button(
-            frame,
+            card,
             text="OPEN",
-            command=lambda p=path: open_file(p)
-        ).pack(
-            anchor="e"
-        )
+            command=lambda result_path=path: open_file(result_path),
+        ).pack(anchor="e", pady=(4, 0))
+
+    for column in range(3):
+        gallery.grid_columnconfigure(column, weight=1)
 
 
 # ============================================================
@@ -716,6 +963,8 @@ def search():
 
         if accessible_folders:
             try:
+                from natural_language_engine import search_findly
+
                 indexed_results = search_findly(
                     query,
                     accessible_folders
@@ -819,7 +1068,11 @@ def search():
             ):
                 set_status("Search complete. All listed files are present.", "#006400")
                 if voice_assistant.is_speaking_supported():
-                    voice_assistant.speak_results_summary(query, results)
+                    threading.Thread(
+                        target=voice_assistant.speak_results_summary,
+                        args=(query, results),
+                        daemon=True,
+                    ).start()
             elif results:
                 notices = []
                 if missing_file_count:
@@ -837,7 +1090,11 @@ def search():
                     "#9a6700"
                 )
                 if voice_assistant.is_speaking_supported():
-                    voice_assistant.speak_results_summary(query, results)
+                    threading.Thread(
+                        target=voice_assistant.speak_results_summary,
+                        args=(query, results),
+                        daemon=True,
+                    ).start()
             else:
                 if missing_file_count:
                     set_status(
@@ -868,26 +1125,60 @@ def voice_search():
 
     if not voice_assistant.is_listening_supported():
 
-        set_status("Voice input is unavailable on this device.", "#b22222")
+        set_status(
+            "Voice input is unavailable: "
+            + (voice_assistant.listening_error or "microphone support is missing."),
+            "#b22222"
+        )
         return
 
-    query = voice_assistant.listen_for_query()
-
-    if not query:
-
-        set_status("Could not hear the query. Please try again.", "#b22222")
+    if not messagebox.askyesno(
+        "Allow voice transcription?",
+        "Findly will capture audio from your microphone and send it to "
+        "Google's speech-recognition service to transcribe your query. "
+        "Your files and photos remain on this PC. Continue?",
+    ):
+        set_status("Voice search was not started.")
         return
 
-    search_entry.delete(
-        0,
-        tk.END
-    )
-    search_entry.insert(
-        0,
-        query
-    )
-    set_status(f"Voice query: {query}")
-    search()
+    voice_button.config(state="disabled")
+    set_status("Listening... Voice transcription uses Google speech recognition.")
+
+    def capture_voice_query():
+        try:
+            query = voice_assistant.listen_for_query()
+            error = None
+        except Exception as caught_error:
+            query = ""
+            error = caught_error
+
+        def finish_voice_search():
+            voice_button.config(state="normal")
+            if error is not None:
+                set_status("Voice transcription failed.", "#b22222")
+                messagebox.showerror(
+                    "Voice transcription failed",
+                    "Findly could not transcribe the audio. Check the "
+                    "microphone and internet connection, then try again.\n\n"
+                    f"{error}"
+                )
+                return
+
+            if not query:
+                set_status("Could not hear the query. Please try again.", "#b22222")
+                return
+
+            search_entry.delete(0, tk.END)
+            search_entry.insert(0, query)
+            set_status(f"Voice query: {query}")
+            search()
+
+        root.after(0, finish_voice_search)
+
+    threading.Thread(
+        target=capture_voice_query,
+        daemon=True
+    ).start()
 
 
 # ============================================================
@@ -1096,6 +1387,34 @@ refresh_button.pack(
     padx=(10, 0)
 )
 
+manage_folders_button = tk.Button(
+    search_frame,
+    text="FOLDERS",
+    font=("Segoe UI", 10, "bold"),
+    bg="#e8eaf0",
+    fg="#263248",
+    bd=0,
+    padx=12,
+    pady=10,
+    command=manage_folders,
+)
+
+manage_folders_button.pack(
+    side="right",
+    padx=(10, 0)
+)
+
+folder_status_label = tk.Label(
+    main_container,
+    text="",
+    font=("Segoe UI", 9),
+    fg="#56627a",
+    bg="#f3f6fb",
+    anchor="w",
+)
+folder_status_label.pack(fill="x", pady=(0, 8))
+update_folder_status()
+
 
 # ============================================================
 # ENTER KEY
@@ -1243,9 +1562,16 @@ def automatic_index_refresh():
 
     global automatic_refresh_running
 
-    if selected_folders and not automatic_refresh_running:
+    if (
+        selected_folders
+        and not automatic_refresh_running
+        and not pending_folders
+    ):
         automatic_refresh_running = True
         folders_to_refresh = tuple(selected_folders)
+        refresh_button.config(state="disabled")
+        folder_button.config(state="disabled")
+        manage_folders_button.config(state="disabled")
 
         def refresh_indexes():
             inaccessible = []
@@ -1256,16 +1582,28 @@ def automatic_index_refresh():
                     continue
 
                 try:
+                    from document_index import add_folder_to_index
+                    from image_indexer import index_image_folder
+
                     with os.scandir(folder):
                         pass
                     add_folder_to_index(folder)
-                    scan_folder(folder)
+                    scan_summary = scan_folder(folder)
+                    if scan_summary["skipped"]:
+                        inaccessible.append(
+                            f"{folder} ({scan_summary['skipped']} files "
+                            "could not be read)"
+                        )
+                    index_image_folder(folder)
                 except Exception as error:
                     inaccessible.append(f"{folder} ({error})")
 
             def finish_refresh():
                 global automatic_refresh_running
                 automatic_refresh_running = False
+                refresh_button.config(state="normal")
+                folder_button.config(state="normal")
+                manage_folders_button.config(state="normal")
 
                 if inaccessible:
                     set_status(
@@ -1289,15 +1627,94 @@ def automatic_index_refresh():
         ).start()
 
     root.after(
-        60000,
+        300000,
         automatic_index_refresh
     )
 
 
-root.after(
-    60000,
-    automatic_index_refresh
-)
+def restore_approved_folders():
+    global automatic_refresh_running
+
+    if startup_config_error is not None:
+        messagebox.showwarning(
+            "Saved folder approvals unavailable",
+            "Findly could not read the saved folder approvals. No folders "
+            "will be scanned until you add them again.\n\n"
+            f"{startup_config_error}"
+        )
+        return
+
+    if not selected_folders:
+        return
+
+    automatic_refresh_running = True
+    folder_button.config(state="disabled")
+    refresh_button.config(state="disabled")
+    manage_folders_button.config(state="disabled")
+    set_status(
+        "Restoring previously approved folders...",
+        "#1d4ed8"
+    )
+    folders_to_restore = tuple(selected_folders)
+
+    def restore():
+        inaccessible = []
+        started_watchers = []
+
+        for folder in folders_to_restore:
+            if not os.path.isdir(folder):
+                inaccessible.append(f"{folder} (folder is missing)")
+                continue
+
+            try:
+                from document_index import add_folder_to_index
+                from file_watcher import start_watcher
+                from image_indexer import index_image_folder
+
+                with os.scandir(folder):
+                    pass
+                add_folder_to_index(folder)
+                scan_summary = scan_folder(folder)
+                index_image_folder(folder)
+                observer = start_watcher(folder)
+                started_watchers.append((folder, observer))
+                if scan_summary["skipped"]:
+                    inaccessible.append(
+                        f"{folder} ({scan_summary['skipped']} files "
+                        "could not be read)"
+                    )
+            except Exception as error:
+                inaccessible.append(f"{folder} (indexing failed: {error})")
+
+        def finish_restore():
+            global automatic_refresh_running
+            automatic_refresh_running = False
+            folder_button.config(state="normal")
+            refresh_button.config(state="normal")
+            manage_folders_button.config(state="normal")
+
+            for folder, observer in started_watchers:
+                watchers.append(observer)
+                folder_watchers[folder] = observer
+
+            if inaccessible:
+                set_status(
+                    "Some approved folders are missing, inaccessible, or "
+                    "contain files that could not be read.",
+                    "#9a6700"
+                )
+                print("Folder restore warnings:", inaccessible)
+            else:
+                set_status("Previously approved folders are ready.", "#006400")
+            update_folder_status()
+
+        root.after(0, finish_restore)
+
+    threading.Thread(target=restore, daemon=True).start()
+
+
+root.after(0, restore_approved_folders)
+root.after(300000, automatic_index_refresh)
 
 
 # ============================================================

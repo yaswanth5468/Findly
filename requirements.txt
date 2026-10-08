@@ -1,0 +1,12 @@
+Flask
+Pillow
+PyAudio
+SpeechRecognition
+python-dateutil
+python-docx
+pypdf
+pyttsx3
+torch
+torchvision
+transformers
+watchdog

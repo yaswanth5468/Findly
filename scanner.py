@@ -97,6 +97,7 @@ def scan_folder(folder):
     scanned = 0
     skipped = 0
     errors = []
+    scanned_paths = set()
 
     def record_error(error):
         nonlocal skipped
@@ -198,10 +199,42 @@ def scan_folder(folder):
                             taken
                         )
                     )
+                    scanned_paths.add(os.path.normcase(path))
                     scanned += 1
 
                 except OSError as error:
                     record_error(f"{path}: {error}")
+
+        if skipped == 0:
+            stale_ids = []
+            for row_id, indexed_path in cursor.execute(
+                "SELECT id, path FROM files"
+            ):
+                try:
+                    indexed_path = os.path.normcase(
+                        os.path.abspath(indexed_path)
+                    )
+                    normalized_folder = os.path.normcase(
+                        os.path.abspath(folder)
+                    )
+                    if (
+                        os.path.commonpath(
+                            [indexed_path, normalized_folder]
+                        )
+                        == normalized_folder
+                        and os.path.normcase(
+                            os.path.normpath(indexed_path).replace("\\", "/")
+                        ) not in scanned_paths
+                    ):
+                        stale_ids.append((row_id,))
+                except (TypeError, ValueError):
+                    continue
+
+            if stale_ids:
+                cursor.executemany(
+                    "DELETE FROM files WHERE id = ?",
+                    stale_ids
+                )
 
         connection.commit()
     except Exception:

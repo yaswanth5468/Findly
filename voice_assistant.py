@@ -15,7 +15,13 @@ except Exception:  # pragma: no cover - optional runtime dependency
 class VoiceAssistant:
     def __init__(self):
         self.recognizer = sr.Recognizer() if sr is not None else None
-        self.microphone = sr.Microphone() if sr is not None else None
+        self.microphone = None
+        self.listening_error = None
+        if sr is not None:
+            try:
+                self.microphone = sr.Microphone()
+            except Exception as error:
+                self.listening_error = str(error)
         self.speaker = self._create_speaker()
         self._lock = threading.Lock()
 
@@ -46,28 +52,37 @@ class VoiceAssistant:
             return
 
         try:
-            if pyttsx3 is not None and self.speaker is not None:
-                self.speaker.say(str(text))
-                self.speaker.runAndWait()
-                return
+            with self._lock:
+                if pyttsx3 is not None and self.speaker is not None:
+                    self.speaker.say(str(text))
+                    self.speaker.runAndWait()
+                    return
 
-            if hasattr(self.speaker, "Speak"):
-                self.speaker.Speak(str(text))
-                return
+                if hasattr(self.speaker, "Speak"):
+                    self.speaker.Speak(str(text))
+                    return
         except Exception:
             pass
 
     def listen_for_command(self, timeout=8, phrase_time_limit=6):
         if not self.is_listening_supported():
-            return ""
+            reason = self.listening_error or "Speech recognition is unavailable."
+            raise RuntimeError(reason)
 
         try:
-            with self.microphone as source:
-                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
+            with self._lock:
+                with self.microphone as source:
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    audio = self.recognizer.listen(
+                        source,
+                        timeout=timeout,
+                        phrase_time_limit=phrase_time_limit
+                    )
 
-            return self.recognizer.recognize_google(audio)
-        except Exception:
+                return self.recognizer.recognize_google(audio)
+        except sr.WaitTimeoutError:
+            return ""
+        except sr.UnknownValueError:
             return ""
 
     def listen_for_query(self):

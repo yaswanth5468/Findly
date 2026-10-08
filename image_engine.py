@@ -176,7 +176,12 @@ def search_images(
     candidate_count = 0
 
 
-    for path, image_embedding in image_data:
+    for entry in image_data:
+
+        if not isinstance(entry, (tuple, list)) or len(entry) < 2:
+            continue
+
+        path, image_embedding = entry[:2]
 
         # ----------------------------------------------------
         # Ignore deleted files

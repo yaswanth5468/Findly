@@ -1,12 +1,12 @@
-from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import os
+import tempfile
+import threading
 import torch
 
+from image_engine import INDEX_PATH, model, processor
 
-MODEL_NAME = "openai/clip-vit-base-patch32"
-
-INDEX_PATH = "clip_images_new.pt"
+_IMAGE_INDEX_LOCK = threading.RLock()
 
 SUPPORTED_EXTENSIONS = {
     ".jpg",
@@ -17,19 +17,6 @@ SUPPORTED_EXTENSIONS = {
     ".tif",
     ".tiff"
 }
-
-
-print("Loading CLIP model...")
-
-model = CLIPModel.from_pretrained(
-    MODEL_NAME
-)
-
-processor = CLIPProcessor.from_pretrained(
-    MODEL_NAME
-)
-
-print("CLIP model loaded.")
 
 
 def get_image_embedding(path):
@@ -80,11 +67,20 @@ def load_image_index():
         return []
 
     try:
-
-        return torch.load(
+        image_data = torch.load(
             INDEX_PATH,
             weights_only=False
         )
+        if not isinstance(image_data, list):
+            raise ValueError("Image index must contain a list.")
+        if any(
+            not isinstance(entry, (tuple, list))
+            or len(entry) < 2
+            or not isinstance(entry[0], str)
+            for entry in image_data
+        ):
+            raise ValueError("Image index contains an invalid entry.")
+        return image_data
 
     except Exception as e:
 
@@ -93,15 +89,24 @@ def load_image_index():
             e
         )
 
-        return []
+        return None
 
 
 def save_image_index(image_data):
-
-    torch.save(
-        image_data,
-        INDEX_PATH
-    )
+    directory = os.path.dirname(os.path.abspath(INDEX_PATH))
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=directory,
+            suffix=".pt",
+            delete=False,
+        ) as index_file:
+            temporary_path = index_file.name
+        torch.save(image_data, temporary_path)
+        os.replace(temporary_path, INDEX_PATH)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
 
 def is_supported_image(path):
@@ -114,20 +119,37 @@ def is_supported_image(path):
 
 
 def index_image_folder(folder):
+    with _IMAGE_INDEX_LOCK:
+        return _index_image_folder(folder)
+
+
+def _index_image_folder(folder):
 
     image_data = load_image_index()
+    if image_data is None:
+        raise RuntimeError(
+            "The saved photo index could not be loaded. Findly left it "
+            "unchanged; restore or remove the damaged index before "
+            "rebuilding."
+        )
     image_paths = []
+    walk_errors = []
 
-    existing_paths = {
-        os.path.normcase(os.path.abspath(path))
-        for path, embedding in image_data
-    }
+    existing_entries = {}
+    for entry in image_data:
+        if isinstance(entry, (tuple, list)) and len(entry) >= 2:
+            existing_entries[
+                os.path.normcase(os.path.abspath(entry[0]))
+            ] = entry
 
     new_count = 0
     person_scanned = 0
     people_detected = 0
 
-    for root, folders, files in os.walk(folder):
+    def on_walk_error(error):
+        walk_errors.append(error)
+
+    for root, folders, files in os.walk(folder, onerror=on_walk_error):
 
         folders[:] = [
             folder_name
@@ -159,24 +181,51 @@ def index_image_folder(folder):
 
         initialize_person_detector()
 
+    current_paths = {
+        os.path.normcase(os.path.abspath(absolute_path))
+        for _path, absolute_path in image_paths
+    }
+    updated_entries = []
+
     for path, absolute_path in image_paths:
 
         normalized_path = os.path.normcase(absolute_path)
+        old_entry = existing_entries.get(normalized_path)
+        try:
+            stat = os.stat(path)
+        except OSError as error:
+            print("Could not inspect image:", path, error)
+            if old_entry is not None:
+                updated_entries.append(old_entry)
+            continue
 
-        if normalized_path not in existing_paths:
+        changed = (
+            old_entry is None
+            or len(old_entry) < 4
+            or old_entry[2] != stat.st_mtime_ns
+            or old_entry[3] != stat.st_size
+        )
+
+        if changed:
             print(
-                "Analyzing new image:",
+                "Analyzing image:",
                 path
             )
 
             embedding = get_image_embedding(path)
             if embedding is not None:
-                image_data.append((path, embedding))
-                existing_paths.add(normalized_path)
-                new_count += 1
+                updated_entries.append(
+                    (path, embedding, stat.st_mtime_ns, stat.st_size)
+                )
+                if old_entry is None:
+                    new_count += 1
+            elif old_entry is not None:
+                updated_entries.append(old_entry)
+        else:
+            updated_entries.append(old_entry)
 
         try:
-            person_confidence = index_person_image(path)
+            person_confidence = index_person_image(path, force=changed)
             if person_confidence is not None:
                 person_scanned += 1
                 if person_confidence >= PERSON_DETECTION_THRESHOLD:
@@ -186,16 +235,50 @@ def index_image_folder(folder):
                         path,
                         round(person_confidence, 3)
                     )
-        except OSError as error:
+        except (OSError, ValueError) as error:
             print(
                 "Could not analyze image for people:",
                 path,
                 error
             )
 
-    save_image_index(
-        image_data
-    )
+    if not walk_errors:
+        folder_path = os.path.normcase(os.path.abspath(folder))
+        for existing_path, entry in existing_entries.items():
+            try:
+                inside_folder = (
+                    os.path.commonpath([existing_path, folder_path])
+                    == folder_path
+                )
+            except ValueError:
+                updated_entries.append(entry)
+                continue
+
+            if not inside_folder:
+                updated_entries.append(entry)
+
+        image_data = updated_entries
+
+        from person_detector import prune_person_images
+
+        prune_person_images(folder, current_paths)
+    else:
+        print(
+            "Image index cleanup skipped because some folders could not "
+            "be scanned:",
+            walk_errors
+        )
+        updated_paths = {
+            os.path.normcase(os.path.abspath(entry[0]))
+            for entry in updated_entries
+        }
+        image_data = updated_entries + [
+            entry
+            for path, entry in existing_entries.items()
+            if path not in updated_paths
+        ]
+
+    save_image_index(image_data)
 
     print(
         "New images indexed:",
@@ -217,7 +300,11 @@ def index_image_folder(folder):
 
 
 def update_image(path):
+    with _IMAGE_INDEX_LOCK:
+        return _update_image(path)
 
+
+def _update_image(path):
     if not os.path.exists(path):
         return
 
@@ -225,18 +312,22 @@ def update_image(path):
         return
 
     image_data = load_image_index()
+    if image_data is None:
+        print("Image update skipped because the saved index is unreadable.")
+        return
 
     absolute_path = os.path.abspath(
         path
     )
 
     image_data = [
-        (
-            saved_path,
-            embedding
+        entry
+        for entry in image_data
+        if (
+            isinstance(entry, (tuple, list))
+            and len(entry) >= 2
+            and os.path.abspath(entry[0]) != absolute_path
         )
-        for saved_path, embedding in image_data
-        if os.path.abspath(saved_path) != absolute_path
     ]
 
     print(
@@ -244,16 +335,22 @@ def update_image(path):
         path
     )
 
-    embedding = get_image_embedding(
-        path
-    )
+    try:
+        stat = os.stat(path)
+    except OSError as error:
+        print("Could not inspect changed image:", path, error)
+        return
+
+    embedding = get_image_embedding(path)
 
     if embedding is not None:
 
         image_data.append(
             (
                 path,
-                embedding
+                embedding,
+                stat.st_mtime_ns,
+                stat.st_size,
             )
         )
 
@@ -274,20 +371,29 @@ def update_image(path):
 
 
 def remove_image(path):
+    with _IMAGE_INDEX_LOCK:
+        return _remove_image(path)
+
+
+def _remove_image(path):
 
     image_data = load_image_index()
+    if image_data is None:
+        print("Image removal skipped because the saved index is unreadable.")
+        return
 
     absolute_path = os.path.abspath(
         path
     )
 
     new_data = [
-        (
-            saved_path,
-            embedding
+        entry
+        for entry in image_data
+        if (
+            not isinstance(entry, (tuple, list))
+            or len(entry) < 2
+            or os.path.abspath(entry[0]) != absolute_path
         )
-        for saved_path, embedding in image_data
-        if os.path.abspath(saved_path) != absolute_path
     ]
 
     if len(new_data) != len(image_data):

@@ -92,16 +92,27 @@ DOCUMENT_CATEGORY_WORDS = {
     "ppt", "pptx", "rtf", "odt", "ods", "odp"
 }
 
+DOCUMENT_INTENT_WORDS = {
+    "resume", "cv", "curriculum", "vitae", "cover", "letter",
+    "report", "proposal", "invoice", "contract", "agreement",
+    "thesis", "paper", "assignment", "memo", "manual", "policy",
+    "project", "summary", "brief", "statement", "plan"
+}
+
+DOCUMENT_QUERY_WORDS = DOCUMENT_CATEGORY_WORDS | DOCUMENT_INTENT_WORDS
+
 DOCUMENT_QUERY_FILLER_WORDS = DOCUMENT_CATEGORY_WORDS | {
     "a", "about", "all", "and", "containing", "every", "find",
     "for", "get", "list", "my", "of", "please", "show", "the",
-    "with", "from", "in", "on", "last", "this", "week", "month",
-    "year", "today", "yesterday", "january", "february", "march",
+    "with", "from", "in", "on", "last", "this", "week", "weeks",
+    "day", "days", "past", "at", "month", "year", "today",
+    "yesterday", "january", "february", "march",
     "april", "may", "june", "july", "august", "september",
     "october", "november", "december", "monday", "tuesday",
     "wednesday", "thursday", "friday", "saturday", "sunday",
     "under", "over", "above", "below", "bigger", "larger",
-    "smaller", "than", "more", "less", "least", "most", "between",
+    "smaller", "greater", "large", "small", "biggest", "largest",
+    "smallest", "than", "more", "less", "least", "most", "between",
     "to", "gb", "mb", "kb"
 }
 
@@ -125,7 +136,7 @@ IMAGE_EXTENSIONS = {
 def is_document_query(query):
 
     words = set(re.findall(r"[a-z0-9]+", query.lower()))
-    return bool(words & DOCUMENT_CATEGORY_WORDS)
+    return bool(words & DOCUMENT_QUERY_WORDS)
 
 
 def is_document_browse_query(query):
@@ -237,9 +248,36 @@ def search_findly(query, folders=None):
 
         return deduplicate_results(results)
 
+    if details["file_type"] == "video":
+        return deduplicate_results(
+            search_files_in_folders(query, folders)
+        )
+
     # --------------------------------
     # IMAGE SEARCH
     # --------------------------------
+
+    has_combined_filters = any(
+        details[key] is not None
+        for key in (
+            "year",
+            "month",
+            "day",
+            "date_start",
+            "size_condition",
+            "size_min",
+            "size_max",
+            "size_order",
+        )
+    ) or bool(details["weekdays"])
+
+    if is_person_query(query) and has_combined_filters:
+
+        from combined_engine import search_combined
+
+        return deduplicate_results(
+            search_combined(query, folders)
+        )
 
     if is_person_query(query):
 
@@ -267,15 +305,7 @@ def search_findly(query, folders=None):
         # date/size filters, use the
         # existing combined engine.
 
-        if (
-            details["year"] is not None
-            or
-            details["month"] is not None
-            or
-            details["day"] is not None
-            or
-            details["size_condition"] is not None
-        ):
+        if has_combined_filters:
 
             from combined_engine import search_combined
 

@@ -4,59 +4,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Findly</title>
-
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
 <body>
-
-    <div class="app">
-
-        <header class="header">
-            <h1>Findly</h1>
-            <p>Find anything on your computer.</p>
+    <div class="page-shell">
+        <header class="hero">
+            <div class="brand-wrap">
+                <div class="brand-mark">F</div>
+                <div>
+                    <p class="eyebrow">AI personal search</p>
+                    <h1>Findly</h1>
+                </div>
+            </div>
+            <p class="subtitle">Search your photos, videos, files, and documents in plain language.</p>
         </header>
 
-        <main>
-
+        <main class="main-panel">
             <div class="search-box">
-
-                <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="Search your files..."
-                >
-
-                <button onclick="searchFiles()">
-                    Search
-                </button>
-
-                <button
-                    id="voiceButton"
-                    class="voice-button"
-                    type="button"
-                    onclick="startVoiceSearch()"
-                >
+                <div class="search-input-wrap">
+                    <span class="input-icon">⌕</span>
+                    <input
+                        type="text"
+                        id="searchInput"
+                        placeholder="Search for a photo, document, video, or file..."
+                        aria-label="Search query"
+                    >
+                </div>
+                <button class="primary-button" onclick="searchFiles()">Search</button>
+                <button id="voiceButton" class="secondary-button" type="button" onclick="startVoiceSearch()">
                     🎤 Voice
                 </button>
-
             </div>
 
-            <div id="status">
-                Ready
+            <div class="quick-searches" aria-label="Quick search examples">
+                <button class="chip" data-query="show my photos from 2025">Photos from 2025</button>
+                <button class="chip" data-query="find my resume pdf">Find my resume</button>
+                <button class="chip" data-query="show large videos">Large videos</button>
+                <button class="chip" data-query="photos with a person">Person photos</button>
             </div>
 
-            <div id="results">
-            </div>
+            <div id="status" class="status">Ready</div>
 
+            <div id="results" class="results" aria-live="polite"></div>
         </main>
-
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-
 </body>
 
 </html>

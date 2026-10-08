@@ -175,14 +175,15 @@ def search_files(text, folders=None):
     filter_words = {
         "find", "search", "show", "list", "get", "all", "every",
         "my", "the", "a", "an", "of", "for", "from", "in", "on",
-        "with", "and", "please", "file", "files", "document",
+        "with", "and", "at", "please", "file", "files", "document",
         "documents", "doc", "docs", "text", "texts", "pdf", "pdfs",
         "word", "docx", "txt", "excel", "spreadsheet", "spreadsheets",
         "xls", "xlsx", "xlsm", "xlsb", "csv", "presentation",
         "presentations", "ppt", "pptx", "rtf", "odt", "ods", "odp",
         "photo", "photos", "picture", "pictures", "image", "images",
         "video", "videos", "python", "py", "today", "yesterday",
-        "this", "last", "week", "month", "year", "january",
+        "this", "last", "past", "week", "weeks", "day", "days",
+        "month", "year", "january",
         "february", "march", "april", "may", "june", "july",
         "august", "september", "october", "november", "december",
         "monday", "tuesday", "wednesday", "thursday", "friday",
@@ -258,6 +259,34 @@ def search_files(text, folders=None):
             yesterday.isoformat()
         ])
 
+    elif "this week" in text:
+
+        today = datetime.now().date()
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=7)
+
+        conditions.append(
+            """
+            (
+                date(created) >= ? AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ? AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
+        )
+        values.extend([
+            start.isoformat(), end.isoformat(),
+            start.isoformat(), end.isoformat(),
+            start.isoformat(), end.isoformat()
+        ])
+
     elif "last week" in text:
 
         today = datetime.now().date()
@@ -295,6 +324,34 @@ def search_files(text, folders=None):
             end.isoformat(),
             start.isoformat(),
             end.isoformat()
+        ])
+
+    elif "last 7 days" in text or "past 7 days" in text:
+
+        today = datetime.now().date()
+        start = today - timedelta(days=6)
+        end = today + timedelta(days=1)
+
+        conditions.append(
+            """
+            (
+                date(created) >= ? AND date(created) < ?
+            )
+            OR
+            (
+                date(modified) >= ? AND date(modified) < ?
+            )
+            OR
+            (
+                date(substr(taken,1,10)) >= ?
+                AND date(substr(taken,1,10)) < ?
+            )
+            """
+        )
+        values.extend([
+            start.isoformat(), end.isoformat(),
+            start.isoformat(), end.isoformat(),
+            start.isoformat(), end.isoformat()
         ])
 
     elif "last month" in text:
